@@ -1,7 +1,7 @@
 # Description
 The code in this repositorie is extented from Vulkan Guide (https://vkguide.dev/).
 
-My work is motifying the code for being able to render a 3d model from online resource.
+My work is adding the code for being able to render a 3d model from online resource.
 Additionaly, I implement geometric buffer pipeline, screen space reflection, 
 Percentage-Closer Soft Shadows, simple shadow map, and frustum culling based on compute shader.
 

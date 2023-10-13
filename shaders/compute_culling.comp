@@ -1,0 +1,79 @@
+#version 450
+
+layout (local_size_x = 256) in;
+
+struct cullData
+{
+	mat4 view;
+	vec4 frustum;
+	float znear;
+	float zfar;
+	uint count;
+};
+
+layout(push_constant) uniform constants{   
+    cullData cull;
+};
+
+struct ObjectData{
+	mat4 model;
+	vec4 spherebounds;
+}; 
+
+layout(std140,set = 0, binding = 0) readonly buffer ObjectBuffer{   
+	ObjectData objects[];
+} objectBuffer;
+
+struct GPUInstance {
+	uint objectID;
+};
+
+layout(set = 0, binding = 1) readonly buffer InstanceBuffer{   
+	GPUInstance Instances[];
+} instanceBuffer;
+
+struct DrawCommand {
+	uint  vertexCount;
+    uint  instanceCount;
+    uint  firstVertex;
+    uint  firstInstance;
+};
+
+layout(set = 0, binding = 2)  buffer DrawCommandBuffer{   
+	DrawCommand commands[];
+} commandBuffer;
+
+bool isVisible(uint objectIndex)
+{
+	uint index = objectIndex;
+
+	vec4 sphereBounds = objectBuffer.objects[index].spherebounds;
+
+	vec3 center = sphereBounds.xyz;
+	center = (cull.view * vec4(center,1.f)).xyz;
+	float radius = sphereBounds.w;
+	
+	bool visible = true;
+
+	visible = visible && abs(center.z) * cull.frustum.x - abs(center.x) * cull.frustum.y > -radius;
+	visible = visible && abs(center.z) * cull.frustum.z - abs(center.y) * cull.frustum.w > -radius;
+
+	
+	//visible = visible && center.z + radius > cull.znear && center.z - radius < cull.zfar;
+	return visible;
+
+}
+void main() {
+    uint gID = gl_GlobalInvocationID.x;
+	if(gID < cull.count){
+		uint objectID = instanceBuffer.Instances[gID].objectID;
+		bool visible = isVisible(objectID);
+		
+		if(visible){
+			commandBuffer.commands[objectID].instanceCount = 1;
+		}
+		else{
+			commandBuffer.commands[objectID].instanceCount = 0;
+		}
+	}
+}

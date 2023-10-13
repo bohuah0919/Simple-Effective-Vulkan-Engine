@@ -18,6 +18,7 @@ layout(set = 1, binding = 1) uniform  SceneData{
 
 struct ObjectData{
 	mat4 model;
+    vec4 sphereBound;
 }; 
 
 layout(std140, set = 2, binding = 0) readonly buffer ObjectBuffer{   

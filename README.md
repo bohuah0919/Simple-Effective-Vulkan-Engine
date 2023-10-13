@@ -1,7 +1,5 @@
 # Description
-The code in this repositorie is extented from Vulkan Guide.
-https://vkguide.dev/
-
+The code in this repositorie is extented from Vulkan Guide (https://vkguide.dev/).
 
 My work is motifying the code for being able to render a 3d model from online resource.
 Additionaly, I implement geometric buffer pipeline, screen space reflection, 

@@ -33,7 +33,7 @@ struct Mesh {
 	std::vector<Vertex> _vertices;
 	std::string name;
 	AllocatedBuffer _vertexBuffer;
-
+	glm::vec4 sphereBound;
 	bool load_from_obj(const char* filename);
 };
 

@@ -167,14 +167,14 @@ VkPipelineRasterizationStateCreateInfo vkinit::rasterization_state_create_info(V
 
 	return info;
 }
-VkPipelineMultisampleStateCreateInfo vkinit::multisampling_state_create_info()
+VkPipelineMultisampleStateCreateInfo vkinit::multisampling_state_create_info(VkSampleCountFlagBits samples)
 {
 	VkPipelineMultisampleStateCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
 	info.pNext = nullptr;
 
 	info.sampleShadingEnable = VK_FALSE;
-	info.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+	info.rasterizationSamples = samples;
 	info.minSampleShading = 1.0f;
 	info.pSampleMask = nullptr;
 	info.alphaToCoverageEnable = VK_FALSE;
@@ -203,7 +203,7 @@ VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info() {
 }
 
 
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent)
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
 {
 	VkImageCreateInfo info = { };
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -216,7 +216,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags u
 
 	info.mipLevels = 1;
 	info.arrayLayers = 1;
-	info.samples = VK_SAMPLE_COUNT_1_BIT;
+	info.samples = samples;
 	info.tiling = VK_IMAGE_TILING_OPTIMAL;
 	info.usage = usageFlags;
 
@@ -322,4 +322,17 @@ VkSamplerCreateInfo vkinit::sampler_create_info(VkFilter filters, VkSamplerAddre
 	info.addressModeW = samplerAdressMode;
 
 	return info;
+}
+
+VkBufferMemoryBarrier vkinit::buffer_barrier(VkBuffer buffer, uint32_t queue)
+{
+	VkBufferMemoryBarrier barrier{};
+	barrier.buffer = buffer;
+	barrier.size = VK_WHOLE_SIZE;
+	barrier.srcQueueFamilyIndex = queue;
+	barrier.dstQueueFamilyIndex = queue;
+	barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	barrier.pNext = nullptr;
+
+	return barrier;
 }

@@ -25,6 +25,13 @@ public:
 	VkPipeline build_pipeline(VkDevice device, VkRenderPass pass);
 };
 
+class ComputePipelineBuilder {
+public:
+
+	VkPipelineShaderStageCreateInfo  _shaderStage;
+	VkPipelineLayout _pipelineLayout;
+	VkPipeline build_pipeline(VkDevice device);
+};
 
 
 struct DeletionQueue
@@ -45,16 +52,17 @@ struct DeletionQueue
 	}
 };
 
-struct MeshPushConstants {
-	glm::vec4 data;
-	glm::mat4 render_matrix;
-};
-
-
 struct Material {
 	VkDescriptorSet textureSet{ VK_NULL_HANDLE };
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
+};
+
+struct IndirectBatch {
+	Mesh* mesh;
+	Material* material;
+	uint32_t first;
+	uint32_t count;
 };
 
 struct Texture {
@@ -69,7 +77,6 @@ struct RenderObject {
 
 	glm::mat4 transformMatrix;
 
-
 };
 
 struct RenderObjects {
@@ -83,6 +90,12 @@ struct FrameData {
 	VkFence _renderFence;
 
 	DeletionQueue _frameDeletionQueue;
+
+	VkCommandPool _cullCommandPool;
+	VkCommandBuffer _cullCommandBuffer;
+
+	VkCommandPool _cullShadowCommandPool;
+	VkCommandBuffer _cullShadowCommandBuffer;
 
 	VkCommandPool _commandPool;
 	VkCommandBuffer _mainCommandBuffer;
@@ -102,6 +115,12 @@ struct FrameData {
 	AllocatedBuffer lightBuffer;
 	VkDescriptorSet lightDescriptor;
 
+	AllocatedBuffer instanceBuffer;
+	VkDescriptorSet cullDescriptor;
+	VkDescriptorSet cullShadowDescriptor;
+
+	AllocatedBuffer indirectBuffer;
+	AllocatedBuffer indirectShadowBuffer;
 };
 
 struct UploadContext {
@@ -123,6 +142,19 @@ struct GPUSceneData {
 
 struct GPUObjectData {
 	alignas(16) glm::mat4 modelMatrix;
+	alignas(16) glm::vec4 sphereBound;
+};
+
+struct GPUInstance {
+	alignas(4) uint32_t objectID;
+};
+
+struct CullConstants {
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::vec4 frustum;
+	alignas(4) float znear;
+	alignas(4) float zfar;
+	alignas(4) uint32_t count;
 };
 
 constexpr unsigned int FRAME_OVERLAP = 2;
@@ -140,6 +172,8 @@ public:
 
 	GLFWwindow* _window{ nullptr };
 
+	glm::vec3 _lightPos = { -120.0f,140.0f,80.0f };
+	glm::vec3 _lightFoc = { 20.0f, -20.0f, 0.0f };
 	glm::vec3 _camPos = { 0.0f, 10.0f, 30.0f };
 	glm::vec3 _oriFoc = { 0.0f, 10.0f, 0.0f };
 	glm::vec3 _foc = { 0.0f, 10.0f, 0.0f };
@@ -148,6 +182,8 @@ public:
 	float _horAngle = 0.0f;
 	float _verAngleOffset = 0.0f;
 	float _horAngleOffset = 0.0f;
+
+	VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_4_BIT;
 
 	VkInstance _instance;
 	VkDebugUtilsMessengerEXT _debug_messenger;
@@ -212,6 +248,9 @@ public:
 
 	VmaAllocator _allocator;
 
+	VkImageView _colorImageView;
+	AllocatedImage _colorImage;
+
 	VkImageView _depthImageView;
 	AllocatedImage _depthImage;
 
@@ -228,6 +267,8 @@ public:
 	VkDescriptorSetLayout _gBufferSetLayout;
 	GPUSceneData _sceneParameters;
 	AllocatedBuffer _sceneParameterBuffer;
+
+	VkDescriptorSetLayout _cullSetLayout;
 
 	UploadContext _uploadContext;
 
@@ -255,6 +296,10 @@ public:
 	Material* get_material(const std::string& name);
 
 	Mesh* get_mesh(const std::string& name);
+
+	void execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count);
+
+	void execute_culling(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
 
@@ -297,6 +342,8 @@ private:
 	void load_meshes();
 
 	void load_images();
+
+	bool load_compute_shader(const char* shaderPath);
 
 	void upload_mesh(Mesh& mesh);
 

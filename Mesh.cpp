@@ -149,6 +149,13 @@ bool Meshes::load_from_obj(const char* filename)
 
 	for (size_t s = 0; s < shapes.size(); s++) {
 		Mesh _mesh;
+		glm::vec3 maxP = { -std::numeric_limits<float>::infinity(),
+			-std::numeric_limits<float>::infinity(),
+			-std::numeric_limits<float>::infinity() };
+		glm::vec3 minP = {std::numeric_limits<float>::infinity(),
+			std::numeric_limits<float>::infinity(),
+			std::numeric_limits<float>::infinity() };
+
 		_mesh.name = shapes[s].name;
 		size_t index_offset = 0;
 		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
@@ -184,6 +191,17 @@ bool Meshes::load_from_obj(const char* filename)
 
 				new_vert.color = KdMap.at(shapes[s].name);
 
+				maxP[0] = std::max(maxP[0], new_vert.position.x);
+				maxP[1] = std::max(maxP[1], new_vert.position.y);
+				maxP[2] = std::max(maxP[2], new_vert.position.z);
+
+				minP[0] = std::min(minP[0], new_vert.position.x);
+				minP[1] = std::min(minP[1], new_vert.position.y);
+				minP[2] = std::min(minP[2], new_vert.position.z);
+
+				glm::vec3 center = (minP + maxP) / 2.0f;
+				float radius = glm::length(maxP - minP) / 2.0f;
+				_mesh.sphereBound = { center,radius };
 
 				_mesh._vertices.push_back(new_vert);
 			}

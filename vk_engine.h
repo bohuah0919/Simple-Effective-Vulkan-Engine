@@ -8,6 +8,9 @@
 #include <unordered_map>
 #include <string>
 
+constexpr unsigned int FRAME_OVERLAP = 2;
+constexpr unsigned int SHADOW_MAP_CASCADE_COUNT = 4;
+
 class PipelineBuilder {
 public:
 
@@ -33,6 +36,20 @@ public:
 	VkPipeline build_pipeline(VkDevice device);
 };
 
+
+struct Cascade {
+	VkFramebuffer frameBuffer;
+	VkDescriptorSet descriptorSet;
+	VkImageView view;
+
+	float splitDepth;
+	glm::mat4 viewProjMatrix;
+
+	void destroy(VkDevice device) {
+		vkDestroyImageView(device, view, nullptr);
+		vkDestroyFramebuffer(device, frameBuffer, nullptr);
+	}
+};
 
 struct DeletionQueue
 {
@@ -115,12 +132,37 @@ struct FrameData {
 	AllocatedBuffer lightBuffer;
 	VkDescriptorSet lightDescriptor;
 
+	std::array<Cascade, SHADOW_MAP_CASCADE_COUNT> cascades;
+	std::array<AllocatedBuffer, SHADOW_MAP_CASCADE_COUNT> cascadesBuffers;
+
+	AllocatedBuffer cascadesSetBuffer;
+	VkDescriptorSet cascadesSetDescriptor;
+
 	AllocatedBuffer instanceBuffer;
 	VkDescriptorSet cullDescriptor;
 	VkDescriptorSet cullShadowDescriptor;
 
 	AllocatedBuffer indirectBuffer;
 	AllocatedBuffer indirectShadowBuffer;
+};
+
+struct Camera {
+	glm::vec3 _camPos = { 0.0f, 2.0f, 30.0f };
+	glm::vec3 _oriFoc = { 0.0f, 2.0f, 0.0f };
+	glm::vec3 _foc = { 0.0f, 2.0f, 0.0f };
+	glm::vec2 _posPress;
+	float _verAngle = 0.0f;
+	float _horAngle = 0.0f;
+	float _verAngleOffset = 0.0f;
+	float _horAngleOffset = 0.0f;
+	glm::mat4 viewproj;
+	float zNear;
+	float zFar;
+};
+
+struct CascadesSet {
+	alignas(16) glm::vec4 cascadeSplits;
+	alignas(16) glm::mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
 };
 
 struct UploadContext {
@@ -131,11 +173,13 @@ struct UploadContext {
 struct GPUCameraData {
 	alignas(16) glm::vec3 pos;
 	alignas(16) glm::mat4 viewproj;
+	alignas(16) glm::mat4 view;
 };
 
 
 struct GPUSceneData {
 	alignas(16) glm::vec3 lightColor;
+	alignas(16) glm::vec3 lightDir;
 	alignas(4) float zNear;
 	alignas(4) float zFar;
 };
@@ -157,8 +201,6 @@ struct CullConstants {
 	alignas(4) uint32_t count;
 };
 
-constexpr unsigned int FRAME_OVERLAP = 2;
-
 class VulkanEngine {
 public:
 
@@ -167,23 +209,16 @@ public:
 	int _selectedShader{ 0 };
 
 	VkExtent2D _windowExtent{ 1700, 900 };
-	VkExtent2D _shadowExtent{ 4096, 4096 };
+	VkExtent2D _shadowExtent{ 2048, 2048 };
 	VkExtent2D _gBufferExtent{ 512, 512};
 
 	GLFWwindow* _window{ nullptr };
 
 	glm::vec3 _lightPos = { -120.0f,140.0f,80.0f };
-	glm::vec3 _lightFoc = { 20.0f, -20.0f, 0.0f };
-	glm::vec3 _camPos = { 0.0f, 10.0f, 30.0f };
-	glm::vec3 _oriFoc = { 0.0f, 10.0f, 0.0f };
-	glm::vec3 _foc = { 0.0f, 10.0f, 0.0f };
-	glm::vec2 _posPress;
-	float _verAngle = 0.0f;
-	float _horAngle = 0.0f;
-	float _verAngleOffset = 0.0f;
-	float _horAngleOffset = 0.0f;
+	glm::vec3 _lightFoc = { 0.0f, 0.0f, 0.0f };
+	Camera _camera;
 
-	VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+	VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 
 	VkInstance _instance;
 	VkDebugUtilsMessengerEXT _debug_messenger;
@@ -200,8 +235,11 @@ public:
 	VkRenderPass _renderPass;
 	VkRenderPass _gBufferPass;
 	VkRenderPass _shadowPass;
+	VkRenderPass _depthPass;
 	VkDescriptorSet _shadowMap;
+	VkDescriptorSet _csmSet;
 	VkDescriptorSet _gBuffer;
+
 
 	VkSurfaceKHR _surface;
 	VkSwapchainKHR _swapchain;
@@ -218,6 +256,8 @@ public:
 	VkImageView _shadowColorImageView;
 	AllocatedImage _shadowDepthImage;
 	VkImageView _shadowDepthImageView;
+	AllocatedImage _depth;
+	VkImageView _depthView;
 
 	VkFramebuffer _gBufferFramebuffer;
 	AllocatedImage _gBufferPosImage;
@@ -263,7 +303,9 @@ public:
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _objectSetLayout;
 	VkDescriptorSetLayout _singleTextureSetLayout;
+	VkDescriptorSetLayout _csmSetLayout;
 	VkDescriptorSetLayout _lightSetLayout;
+	VkDescriptorSetLayout _cascadesSetLayout;
 	VkDescriptorSetLayout _gBufferSetLayout;
 	GPUSceneData _sceneParameters;
 	AllocatedBuffer _sceneParameterBuffer;
@@ -297,6 +339,8 @@ public:
 
 	Mesh* get_mesh(const std::string& name);
 
+	std::vector<IndirectBatch> compact_draws(RenderObject* objects, int count);
+
 	void execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void execute_culling(VkCommandBuffer cmd, RenderObject* first, int count);
@@ -306,6 +350,12 @@ public:
 	void draw_gbuffer(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void draw_shadow(VkCommandBuffer cmd, RenderObject* first, int count);
+
+	void prepare_depthpass();
+
+	void update_csm_descriptors(RenderObject* first, int count);
+
+	void update_csm(VkCommandBuffer cmd, RenderObject* first, int count, int cascadesIndex);
 
 	AllocatedBuffer create_buffer(size_t allocSize, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 

@@ -22,6 +22,7 @@ layout(set = 1, binding = 0) uniform  lightBuffer{
 
 layout(set = 1, binding = 1) uniform  SceneData{   
 	vec3 lightEmit;
+    vec3 lightDir;
     float zNear;
     float zFar;
 } sceneData;
@@ -277,4 +278,6 @@ void main() {
 
     Le += L_indir;
     outColor = vec4(Le * visibility + color * 0.2, 1.0);
+    //float shadowMapDepth = unpack(texture(shadowMapSampler, shadow_map_coord.xy));
+    //outColor = vec4(shadowMapDepth);
 }

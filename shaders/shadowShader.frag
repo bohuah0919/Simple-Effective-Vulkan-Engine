@@ -5,6 +5,7 @@ layout(location = 0) out vec4 outColor;
 
 layout(set = 0, binding = 1) uniform  SceneData{   
 	vec3 lightEmit;
+    vec3 lightDir;
     float zNear;
     float zFar;
 } sceneData;
@@ -16,5 +17,5 @@ vec4 pack (float depth) {
 }
 
 void main() {
-    outColor = pack((fragPosition.z - sceneData.zNear) / (sceneData.zFar - sceneData.zNear));
+    outColor = pack((fragPosition.z - sceneData.zNear) / (sceneData.zFar- sceneData.zNear));
 }

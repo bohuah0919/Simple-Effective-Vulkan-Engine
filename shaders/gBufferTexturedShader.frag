@@ -25,6 +25,7 @@ layout(set = 1, binding = 0) uniform  lightBuffer{
 
 layout(set = 1, binding = 1) uniform  SceneData{   
 	vec3 lightEmit;
+    vec3 lightDir;
     float zNear;
     float zFar;
 } sceneData;
@@ -35,6 +36,12 @@ layout(set = 3, binding = 0) uniform sampler2D shadowMapSampler;
 #define PI 3.141592653589793
 #define NUM_SAMPLES 150
 #define LIGHT_SIZE 0.004
+
+float LinearizeDepth(float depth) 
+{
+    float z = depth * 2.0 - 1.0;
+    return (2.0 * sceneData.zNear * sceneData.zFar) / (sceneData.zFar + sceneData.zNear - z * (sceneData.zFar - sceneData.zNear));	
+}
 
 vec4 pack (float depth) {
     vec4 rgbaDepth = fract(depth * vec4(1.0, 255.0, 255.0 * 255.0, 255.0 * 255.0 * 255.0));

@@ -157,6 +157,7 @@ bool Meshes::load_from_obj(const char* filename)
 			std::numeric_limits<float>::infinity() };
 
 		_mesh.name = shapes[s].name;
+		std::cout << shapes[s].name << std::endl;
 		size_t index_offset = 0;
 		for (size_t f = 0; f < shapes[s].mesh.num_face_vertices.size(); f++) {
 
@@ -189,7 +190,8 @@ bool Meshes::load_from_obj(const char* filename)
 				new_vert.uv.x = ux;
 				new_vert.uv.y = 1 - uy;
 
-				new_vert.color = KdMap.at(shapes[s].name);
+				//new_vert.color = KdMap.at(shapes[s].name);
+				new_vert.color = { 1.0f,1.0f,1.0f };
 
 				maxP[0] = std::max(maxP[0], new_vert.position.x);
 				maxP[1] = std::max(maxP[1], new_vert.position.y);

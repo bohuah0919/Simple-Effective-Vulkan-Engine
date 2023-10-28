@@ -25,6 +25,7 @@ layout(set = 1, binding = 0) uniform  lightBuffer{
 
 layout(set = 1, binding = 1) uniform  SceneData{   
 	vec3 lightEmit;
+    vec3 lightDir;
     float zNear;
     float zFar;
 } sceneData;

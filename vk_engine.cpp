@@ -47,6 +47,51 @@ const std::vector<std::string> TEXTURE_NAMES =
 	 "green-marble"
 };
 
+const std::vector<std::string> TEXTURE_PATHS1 =
+{
+	"assets/NY_City/City Block OBJ/Building textures/Building 1/Brownstone red_Color.png",
+	"assets/NY_City/City Block OBJ/Building textures/Building 2/Building brick cornor_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 3/Townhouse 001_color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 4/Townhouse6_Color.png",
+	"assets/NY_City/City Block OBJ/Building textures/Building 5/Brownstone tall_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 6/Brick Building_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 7/Building center_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 8/Townhouse2_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 9/Townhousecornor_color.png",
+	"assets/NY_City/City Block OBJ/Building textures/Building 10/Townhouse Brownstone_Color.png",
+	 "assets/NY_City/City Block OBJ/Building textures/Building 11/Townhousestore1_Color.png",
+	 "assets/NY_City/City Block OBJ/Maple tree/Bark.png",
+	 "assets/NY_City/City Block OBJ/Maple tree/Leaf 1_Color.png",
+	 "assets/NY_City/City Block OBJ/Maple tree/leaf2_Color.png",
+	 "assets/NY_City/City Block OBJ/Road textures/Center road.png",
+	 "assets/NY_City/City Block OBJ/Road textures/Road.png",
+	 "assets/NY_City/City Block OBJ/Road textures/Side walk.png",
+	 "assets/NY_City/City Block OBJ/Stop Light/Stoplight.png"
+};
+
+const std::vector<std::string> TEXTURE_NAMES1 =
+{
+	"Building 1",
+	"Building 2",
+	 "Building 3",
+	 "Building 4",
+	"Building 5",
+	 "Building 6",
+	 "Building 7",
+	"Building 8",
+	 "Building 9",
+	 "Building 10",
+	"Building 11",
+	"Bark",
+	"Leaf 1",
+	"Leaf 2",
+	"Center road",
+	"Road",
+	"Side walk",
+	"Stop light"
+};
+
+
 
 void VulkanEngine::init()
 {
@@ -76,6 +121,8 @@ void VulkanEngine::init()
 	init_gbuffer_renderpass();
 
 	init_default_renderpass();
+
+	prepare_depthpass();
 
 	init_framebuffers();
 
@@ -121,7 +168,7 @@ void VulkanEngine::cleanup()
 
 void VulkanEngine::draw()
 {
-	VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
+	VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, UINT64_MAX));
 	VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
 
 	VK_CHECK(vkResetCommandBuffer(get_current_frame()._cullShadowCommandBuffer, 0));
@@ -130,7 +177,7 @@ void VulkanEngine::draw()
 	VK_CHECK(vkResetCommandBuffer(get_current_frame()._shadowCommandBuffer, 0));
 	VK_CHECK(vkResetCommandBuffer(get_current_frame()._gBufferCommandBuffer, 0));
 	uint32_t swapchainImageIndex;
-	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._presentSemaphore, nullptr, &swapchainImageIndex));
+	VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, UINT64_MAX, get_current_frame()._presentSemaphore, nullptr, &swapchainImageIndex));
 
 	VkCommandBuffer cmd;
 	cmd = get_current_frame()._cullShadowCommandBuffer;
@@ -157,7 +204,7 @@ void VulkanEngine::draw()
 	depthClear.depthStencil.depth = 1.f;
 
 	VkClearValue clearValues[] = { clearValue, depthClear };
-	
+	/*
 	VkRenderPassBeginInfo sdrpInfo = vkinit::renderpass_begin_info(_shadowPass, _shadowExtent, _shadowFramebuffer);
 
 	sdrpInfo.clearValueCount = 2;
@@ -174,11 +221,33 @@ void VulkanEngine::draw()
 	VkSubmitInfo shadowSubmit = vkinit::submit_info(&cmd);
 
 	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &shadowSubmit, nullptr));
-	
+	*/
+	update_csm_descriptors(_renderables.data(), _renderables.size());
+	for (size_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		VkRenderPassBeginInfo sdrpInfo = vkinit::renderpass_begin_info(_depthPass, _shadowExtent, get_current_frame().cascades[i].frameBuffer);
+
+		VkClearValue clearValues[1];
+		clearValues[0].depthStencil = { 1.0f, 0 };
+
+		sdrpInfo.clearValueCount = 1;
+		sdrpInfo.pClearValues = clearValues;
+
+		vkCmdBeginRenderPass(cmd, &sdrpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		update_csm(cmd, _renderables.data(), _renderables.size(), i);
+
+		vkCmdEndRenderPass(cmd);
+		
+	}
+	VK_CHECK(vkEndCommandBuffer(cmd));
+	VkSubmitInfo shadowSubmit = vkinit::submit_info(&cmd);
+
+	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &shadowSubmit, nullptr));
+
+	/*
 	cmd = get_current_frame()._gBufferCommandBuffer;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
-
 	VkClearValue gBufferClearValues[] = { clearValue, clearValue, clearValue, clearValue, clearValue, depthClear };
 
 	VkRenderPassBeginInfo grpInfo = vkinit::renderpass_begin_info(_gBufferPass, _gBufferExtent, _gBufferFramebuffer);
@@ -197,7 +266,7 @@ void VulkanEngine::draw()
 	VkSubmitInfo gbufferSubmit = vkinit::submit_info(&cmd);
 
 	VK_CHECK(vkQueueSubmit(_graphicsQueue, 1, &gbufferSubmit, nullptr));
-
+	*/
 	cmd = get_current_frame()._mainCommandBuffer;
 
 	VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
@@ -334,7 +403,7 @@ void VulkanEngine::init_swapchain()
 
 	vkb::Swapchain vkbSwapchain = swapchainBuilder
 		.use_default_format_selection()
-		.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
+		.set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
 		.set_desired_extent(_windowExtent.width, _windowExtent.height)
 		.build()
 		.value();
@@ -370,7 +439,7 @@ void VulkanEngine::init_swapchain()
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
 	_shadowMapFormat = VK_FORMAT_R8G8B8A8_SRGB;
 
-	VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, windowImageExtent, _msaaSamples);
+	VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, windowImageExtent, _msaaSamples);
 
 	VmaAllocationCreateInfo dimg_allocinfo = {};
 	dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -382,7 +451,7 @@ void VulkanEngine::init_swapchain()
 
 	VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImageView));
 
-	VkImageCreateInfo dimg_shadow_info = vkinit::image_create_info(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo dimg_shadow_info = vkinit::image_create_info(_depthFormat, 1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
 
 	vmaCreateImage(_allocator, &dimg_shadow_info, &dimg_allocinfo, &_shadowDepthImage._image, &_shadowDepthImage._allocation, nullptr);
 
@@ -394,7 +463,7 @@ void VulkanEngine::init_swapchain()
 	cimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	cimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	VkImageCreateInfo cimg_info = vkinit::image_create_info(_swachainImageFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, windowImageExtent, _msaaSamples);
+	VkImageCreateInfo cimg_info = vkinit::image_create_info(_swachainImageFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, windowImageExtent, _msaaSamples);
 
 	vmaCreateImage(_allocator, &cimg_info, &cimg_allocinfo, &_colorImage._image, &_colorImage._allocation, nullptr);
 
@@ -402,7 +471,7 @@ void VulkanEngine::init_swapchain()
 
 	VK_CHECK(vkCreateImageView(_device, &cview_info, nullptr, &_colorImageView));
 
-	VkImageCreateInfo cimg_shadow_info = vkinit::image_create_info(_shadowMapFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo cimg_shadow_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
 
 	vmaCreateImage(_allocator, &cimg_shadow_info, &cimg_allocinfo, &_shadowColorImage._image, &_shadowColorImage._allocation, nullptr);
 
@@ -410,7 +479,7 @@ void VulkanEngine::init_swapchain()
 
 	VK_CHECK(vkCreateImageView(_device, &cview_shadow_info, nullptr, &_shadowColorImageView));
 
-	VkImageCreateInfo cimg_gbuffer_info = vkinit::image_create_info(_shadowMapFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo cimg_gbuffer_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
 
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferColorImage._image, &_gBufferColorImage._allocation, nullptr);
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferPosImage._image, &_gBufferPosImage._allocation, nullptr);
@@ -430,7 +499,7 @@ void VulkanEngine::init_swapchain()
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info4, nullptr, &_gBufferVisibilityImageView));
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info5, nullptr, &_gBufferDepthRGBAImageView));
 
-	VkImageCreateInfo dimg_gbuffer_info = vkinit::image_create_info(_depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo dimg_gbuffer_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
 	vmaCreateImage(_allocator, &dimg_gbuffer_info, &dimg_allocinfo, &_gBufferDepthImage._image, &_gBufferDepthImage._allocation, nullptr);
 	VkImageViewCreateInfo dview_gbuffer_info = vkinit::imageview_create_info(_depthFormat, _gBufferDepthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
 	VK_CHECK(vkCreateImageView(_device, &dview_gbuffer_info, nullptr, &_gBufferDepthImageView));
@@ -890,6 +959,18 @@ void VulkanEngine::init_pipelines()
 		std::cout << "Error when building the depth shader module" << std::endl;
 	}
 
+	VkShaderModule directDepthShader;
+	if (!load_shader_module("shaders/depth_shader.vert.spv", &directDepthShader))
+	{
+		std::cout << "Error when building the depthshader module" << std::endl;
+	}
+
+	VkShaderModule sceneShader;
+	if (!load_shader_module("shaders/scene_shader.frag.spv", &sceneShader))
+	{
+		std::cout << "Error when building the depth shader module" << std::endl;
+	}
+
 	PipelineBuilder pipelineBuilder;
 
 	pipelineBuilder._shaderStages.push_back(
@@ -917,6 +998,15 @@ void VulkanEngine::init_pipelines()
 
 	VkPipelineLayout texturedPipeLayout;
 	VK_CHECK(vkCreatePipelineLayout(_device, &textured_pipeline_layout_info, nullptr, &texturedPipeLayout));
+	
+	VkPipelineLayoutCreateInfo scene_pipeline_layout_info = mesh_pipeline_layout_info;
+	VkDescriptorSetLayout sceneLayouts[] = { _globalSetLayout, _cascadesSetLayout, _objectSetLayout, _csmSetLayout, _singleTextureSetLayout };
+
+	scene_pipeline_layout_info.setLayoutCount = 5;
+	scene_pipeline_layout_info.pSetLayouts = sceneLayouts;
+
+	VkPipelineLayout scenePipeLayout;
+	VK_CHECK(vkCreatePipelineLayout(_device, &scene_pipeline_layout_info, nullptr, &scenePipeLayout));
 
 	VkPipelineLayoutCreateInfo textured_specular_pipeline_layout_info = mesh_pipeline_layout_info;
 
@@ -963,6 +1053,7 @@ void VulkanEngine::init_pipelines()
 	pipelineBuilder._scissor.extent = _windowExtent;
 
 	pipelineBuilder._rasterizer = vkinit::rasterization_state_create_info(VK_POLYGON_MODE_FILL);
+	pipelineBuilder._rasterizer.cullMode = VK_CULL_MODE_NONE;
 
 	pipelineBuilder._multisampling = vkinit::multisampling_state_create_info(_msaaSamples);
 
@@ -989,12 +1080,30 @@ void VulkanEngine::init_pipelines()
 
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, texturedMeshShader));
-
+	/*
 	pipelineBuilder._pipelineLayout = texturedPipeLayout;
 	VkPipeline texPipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
 	create_material(texPipeline, texturedPipeLayout, TEXTURE_NAMES[0]);
 	create_material(texPipeline, texturedPipeLayout, TEXTURE_NAMES[1]);
+	for (auto name : TEXTURE_NAMES1) {
+		create_material(texPipeline, texturedPipeLayout, name);
+	}
+	*/
+	//
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
 
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, sceneShader));
+	pipelineBuilder._pipelineLayout = scenePipeLayout;
+	VkPipeline scenePipeline = pipelineBuilder.build_pipeline(_device, _renderPass);
+	create_material(scenePipeline, scenePipeLayout, TEXTURE_NAMES[0]);
+	create_material(scenePipeline, scenePipeLayout, TEXTURE_NAMES[1]);
+	for (auto name : TEXTURE_NAMES1) {
+		create_material(scenePipeline, scenePipeLayout, name);
+	}
+	//
 	pipelineBuilder._shaderStages.clear();
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
@@ -1018,12 +1127,25 @@ void VulkanEngine::init_pipelines()
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_FRAGMENT_BIT, depthShader));
 
 	pipelineBuilder._pipelineLayout = shadowPipeLayout;
+	pipelineBuilder._rasterizer.cullMode = VK_CULL_MODE_NONE;
 	VkPipeline shadowPipeline = pipelineBuilder.build_pipeline(_device, _shadowPass);
 	create_material(shadowPipeline, shadowPipeLayout, "depth");
+
+	pipelineBuilder._shaderStages.clear();
+	pipelineBuilder._shaderStages.push_back(
+		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, directDepthShader));
+
+
+	pipelineBuilder._pipelineLayout = shadowPipeLayout;
+	pipelineBuilder._rasterizer.cullMode = VK_CULL_MODE_NONE;
+	VkPipeline depthPipeline = pipelineBuilder.build_pipeline(_device, _depthPass);
+	create_material(depthPipeline, shadowPipeLayout, "directDepth");
+
 
 	pipelineBuilder._viewport.width = (float)_gBufferExtent.width;
 	pipelineBuilder._viewport.height = (float)_gBufferExtent.height;
 	pipelineBuilder._scissor.extent = _gBufferExtent;
+	pipelineBuilder._rasterizer.cullMode = VK_CULL_MODE_NONE;
 	pipelineBuilder._shaderStages.clear();
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
@@ -1061,16 +1183,19 @@ void VulkanEngine::init_pipelines()
 
 	_mainDeletionQueue.push_function([=]() {
 		vkDestroyPipeline(_device, meshPipeline, nullptr);
-		vkDestroyPipeline(_device, texPipeline, nullptr);
+		//vkDestroyPipeline(_device, texPipeline, nullptr);
 		vkDestroyPipeline(_device, shadowPipeline, nullptr);
 		vkDestroyPipeline(_device, gBufferPipeline, nullptr);
 		vkDestroyPipeline(_device, gBufferTexturedPipeline, nullptr);
 		vkDestroyPipeline(_device, ssrPipeline, nullptr);
+		vkDestroyPipeline(_device, depthPipeline, nullptr);
+		vkDestroyPipeline(_device, scenePipeline, nullptr);
 
 		vkDestroyPipelineLayout(_device, meshPipeLayout, nullptr);
 		vkDestroyPipelineLayout(_device, texturedPipeLayout, nullptr);
 		vkDestroyPipelineLayout(_device, shadowPipeLayout, nullptr);
 		vkDestroyPipelineLayout(_device, texturedSpecularPipeLayout, nullptr);
+		vkDestroyPipelineLayout(_device, scenePipeLayout, nullptr);
 		});
 
 	if (!load_compute_shader("shaders/compute_culling.comp.spv"))
@@ -1289,13 +1414,20 @@ void VulkanEngine::load_meshes()
 		upload_mesh(m);
 		_meshes[m.name] = m;
 	}
+
+	Meshes nyCity{};
+	nyCity.load_from_obj("./assets/NY_City/City Block OBJ/City block.obj");
+
+	for (auto m : nyCity._meshes) {
+		upload_mesh(m);
+		_meshes[m.name] = m;
+	}
 }
 
 void VulkanEngine::load_images()
 {
 
-	std::vector<Texture> texList;
-
+	/*
 	for (int i = 0; i < TEXTURE_PATHS.size(); i++) {
 
 		Texture tex;
@@ -1310,6 +1442,22 @@ void VulkanEngine::load_images()
 			});
 
 		_loadedTextures[TEXTURE_NAMES[i]] = tex;
+	}
+	*/
+	for (int i = 0; i < TEXTURE_PATHS1.size(); i++) {
+
+		Texture tex;
+
+		vkutil::load_image_from_file(*this, TEXTURE_PATHS1[i], tex.image);
+
+		VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
+		vkCreateImageView(_device, &imageinfo, nullptr, &tex.imageView);
+
+		_mainDeletionQueue.push_function([=]() {
+			vkDestroyImageView(_device, tex.imageView, nullptr);
+			});
+
+		_loadedTextures[TEXTURE_NAMES1[i]] = tex;
 	}
 }
 
@@ -1400,7 +1548,7 @@ Mesh* VulkanEngine::get_mesh(const std::string& name)
 	}
 }
 
-std::vector<IndirectBatch> compact_draws(RenderObject* objects, int count)
+std::vector<IndirectBatch> VulkanEngine::compact_draws(RenderObject* objects, int count)
 {
 	std::vector<IndirectBatch> draws;
 
@@ -1490,10 +1638,8 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 
 	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, get_material("culling")->pipelineLayout, 0, 1, &get_current_frame().cullShadowDescriptor, 0, nullptr);
 
-	glm::vec3 verticalNormal = { 0.0f, glm::cos(glm::radians(45.0f)), glm::sin(glm::radians(45.0f)) };
-	glm::vec3 horizontalNormal = glm::normalize(glm::vec3{ glm::cos(glm::radians(45.0f)),
-		0.0f,
-		glm::sin(glm::radians(45.0f))* _shadowExtent.width / (float)_shadowExtent.height });
+	glm::vec3 verticalNormal = { 0.0f, 1.0f, 0.0f };
+	glm::vec3 horizontalNormal = { 1.0f, 0.0f, 0.0f };
 	float yTopBottom = verticalNormal.y;
 	float zTopBottom = verticalNormal.z;
 	float xLeftRight = horizontalNormal.x;
@@ -1509,7 +1655,7 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 
 	int groupcount = ((count) / 256) + 1;
 
-	vkCmdDispatch(cmd, groupcount, 1, 1);
+	//vkCmdDispatch(cmd, groupcount, 1, 1);
 }
 
 void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int count)
@@ -1548,7 +1694,7 @@ void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int
 	float zLeftRight = horizontalNormal.z;
 
 	CullConstants constants;
-	constants.view = glm::lookAt(_camPos, _foc, glm::vec3(0.0f, 1.0f, 0.0f));
+	constants.view = glm::lookAt(_camera._camPos, _camera._foc, glm::vec3(0.0f, 1.0f, 0.0f));
 	constants.frustum = { zLeftRight, xLeftRight, zTopBottom, yTopBottom };
 	constants.zfar = 100.0f;
 	constants.znear = 10.0f;
@@ -1574,6 +1720,306 @@ void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int
 	VK_CHECK(vkEndCommandBuffer(cmd));
 }
 
+void VulkanEngine::prepare_depthpass()
+{
+
+	VkAttachmentDescription depth_attachment = {};
+	depth_attachment.flags = 0;
+	depth_attachment.format = _depthFormat;
+	depth_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depth_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depth_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depth_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	depth_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	depth_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depth_attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+
+	VkAttachmentReference depth_attachment_ref = {};
+	depth_attachment_ref.attachment = 0;
+	depth_attachment_ref.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+
+	VkSubpassDescription subpass = {};
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 0;
+	subpass.pDepthStencilAttachment = &depth_attachment_ref;
+
+	std::array<VkSubpassDependency, 2> dependencies;
+
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[1].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].dstSubpass = 0;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	VkRenderPassCreateInfo render_pass_info = {};
+	render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	render_pass_info.attachmentCount = 1;
+	render_pass_info.pAttachments = &depth_attachment;
+	render_pass_info.subpassCount = 1;
+	render_pass_info.pSubpasses = &subpass;
+	render_pass_info.dependencyCount = static_cast<uint32_t>(dependencies.size());
+	render_pass_info.pDependencies = &dependencies[0];
+
+	VK_CHECK(vkCreateRenderPass(_device, &render_pass_info, nullptr, &_depthPass));
+
+	_mainDeletionQueue.push_function([=]() {
+		vkDestroyRenderPass(_device, _depthPass, nullptr);
+		});
+
+	VkExtent3D shadowExtent = {
+		_shadowExtent.width,
+		_shadowExtent.height,
+		1
+	};
+
+	VmaAllocationCreateInfo img_allocinfo = {};
+	img_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+	img_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	VkImageCreateInfo img_shadow_info = vkinit::image_create_info(_depthFormat, SHADOW_MAP_CASCADE_COUNT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+
+	vmaCreateImage(_allocator, &img_shadow_info, &img_allocinfo, &_depth._image, &_depth._allocation, nullptr);
+
+	VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = SHADOW_MAP_CASCADE_COUNT;
+
+	VK_CHECK(vkCreateImageView(_device, &viewInfo, nullptr, &_depthView));
+
+	for (int i = 0; i < FRAME_OVERLAP; i++)
+	{
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+
+			VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+			viewInfo.subresourceRange.baseMipLevel = 0;
+			viewInfo.subresourceRange.levelCount = 1;
+			viewInfo.subresourceRange.baseArrayLayer = j;
+			viewInfo.subresourceRange.layerCount = 1;
+
+			VK_CHECK(vkCreateImageView(_device, &viewInfo, nullptr, &_frames[i].cascades[j].view));
+
+			VkFramebufferCreateInfo framebufferInfo = vkinit::framebuffer_create_info(_depthPass, _shadowExtent);
+			framebufferInfo.renderPass = _depthPass;
+			framebufferInfo.attachmentCount = 1;
+			framebufferInfo.pAttachments = &_frames[i].cascades[j].view;
+			framebufferInfo.layers = 1;
+			VK_CHECK(vkCreateFramebuffer(_device, &framebufferInfo, nullptr, &_frames[i].cascades[j].frameBuffer));
+		
+
+			_mainDeletionQueue.push_function([=]() {
+				vkDestroyImageView(_device, _depthView, nullptr);
+				vmaDestroyImage(_allocator, _depth._image, _depth._allocation);
+				for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+					vkDestroyImageView(_device, _frames[i].cascades[j].view, nullptr);
+					vkDestroyFramebuffer(_device, _frames[i].cascades[j].frameBuffer, nullptr);
+				}
+				});
+		}
+	}
+	
+	
+
+}
+
+void VulkanEngine::update_csm_descriptors( RenderObject* first, int count)
+{
+
+	float cascadeSplits[SHADOW_MAP_CASCADE_COUNT];
+
+	void* objectData;
+	vmaMapMemory(_allocator, get_current_frame().objectBuffer._allocation, &objectData);
+
+	GPUObjectData* objectSSBO = (GPUObjectData*)objectData;
+
+	for (int i = 0; i < count; i++)
+	{
+		RenderObject& object = first[i];
+		objectSSBO[i].modelMatrix = object.transformMatrix;
+		objectSSBO[i].sphereBound = object.mesh->sphereBound;
+	}
+
+	vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
+
+	_sceneParameters.lightColor = { 3.0,3.0,3.0 };
+	_sceneParameters.lightDir = glm::normalize(glm::vec3{ 3.0,3.0,3.0 });
+	_sceneParameters.zNear = 0.1f;
+	_sceneParameters.zFar = 200.0f;
+
+	_camera.zNear = 0.5f;
+	_camera.zFar = 120.0f;
+
+	char* sceneData;
+	vmaMapMemory(_allocator, _sceneParameterBuffer._allocation, (void**)&sceneData);
+
+	int frameIndex = _frameNumber % FRAME_OVERLAP;
+
+	sceneData += pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+
+	memcpy(sceneData, &_sceneParameters, sizeof(GPUSceneData));
+
+	vmaUnmapMemory(_allocator, _sceneParameterBuffer._allocation);
+
+	glm::mat4 clip = glm::mat4(1.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, -1.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.5f, 0.0f,
+		0.0f, 0.0f, 0.5f, 1.0f);
+
+	glm::mat4 view = glm::lookAt(_camera._camPos, _camera._foc, glm::vec3(0.0f, 1.0f, 0.0f));
+	glm::mat4 projection = glm::perspective(glm::radians(45.0f), _windowExtent.width / (float)_windowExtent.height, 1.0f, 120.0f);
+	projection[1][1] *= -1;
+	glm::mat4 viewProjMat = projection * view;
+	
+	void* data;
+
+	GPUCameraData camData;
+	camData.pos = _camera._camPos;
+	camData.viewproj = viewProjMat;
+	camData.view = view;
+
+	vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
+
+	memcpy(data, &camData, sizeof(GPUCameraData));
+
+	vmaUnmapMemory(_allocator, get_current_frame().cameraBuffer._allocation);
+
+	float nearClip = _camera.zNear;
+	float farClip = _camera.zFar;
+	float clipRange = farClip - nearClip;
+
+	float minZ = nearClip;
+	float maxZ = nearClip + clipRange;
+	float range = maxZ - minZ;
+	float ratio = maxZ / minZ;
+
+	float cascadeSplitLambda = 0.6f;
+	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		float p = (i + 1) / static_cast<float>(SHADOW_MAP_CASCADE_COUNT);
+		float log = minZ * std::pow(ratio, p);
+		float uniform = minZ + range * p;
+		float d = cascadeSplitLambda * (log - uniform) + uniform;
+		cascadeSplits[i] = (d - nearClip) / clipRange;
+	}
+
+	float lastSplitDist = 0.0;
+	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		float splitDist = cascadeSplits[i];
+
+		glm::vec3 frustumCorners[8] = {
+			glm::vec3(-1.0f,  1.0f, 0.0f),
+			glm::vec3(1.0f,  1.0f, 0.0f),
+			glm::vec3(1.0f, -1.0f, 0.0f),
+			glm::vec3(-1.0f, -1.0f, 0.0f),
+			glm::vec3(-1.0f,  1.0f,  1.0f),
+			glm::vec3(1.0f,  1.0f,  1.0f),
+			glm::vec3(1.0f, -1.0f,  1.0f),
+			glm::vec3(-1.0f, -1.0f,  1.0f),
+		};
+
+
+		glm::mat4 invCam = glm::inverse(projection * view);
+		for (uint32_t j = 0; j < 8; j++) {
+			glm::vec4 invCorner = invCam * glm::vec4(frustumCorners[j], 1.0f);
+			frustumCorners[j] = invCorner / invCorner.w;
+		}
+
+		for (uint32_t j = 0; j < 4; j++) {
+			glm::vec3 dist = frustumCorners[j + 4] - frustumCorners[j];
+			frustumCorners[j + 4] = frustumCorners[j] + (dist * splitDist);
+			frustumCorners[j] = frustumCorners[j] + (dist * lastSplitDist);
+		}
+
+		glm::vec3 frustumCenter = glm::vec3(0.0f);
+		for (uint32_t j = 0; j < 8; j++) {
+			frustumCenter += frustumCorners[j];
+		}
+		frustumCenter /= 8.0f;
+
+		float radius = 0.0f;
+		for (uint32_t j = 0; j < 8; j++) {
+			float distance = glm::length(frustumCorners[j] - frustumCenter);
+			radius = glm::max(radius, distance);
+		}
+		radius = std::ceil(radius * 16.0f) / 16.0f;
+
+		glm::vec3 maxExtents = glm::vec3(radius);
+		glm::vec3 minExtents = -maxExtents;
+
+		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter + _sceneParameters.lightDir * (maxExtents + 20.0f), frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x,  maxExtents.y, minExtents.y, 0.0f, maxExtents.z*2.0f+40.0f);
+
+		get_current_frame().cascades[i].splitDepth = (_camera.zNear + splitDist * clipRange) * -1.0f;
+		get_current_frame().cascades[i].viewProjMatrix = lightOrthoMatrix * lightViewMatrix;
+
+		lastSplitDist = cascadeSplits[i];
+
+		void* cascadeData;
+		GPUCameraData lightData;
+		lightData.pos = frustumCenter - _sceneParameters.lightDir * minExtents.z;
+		lightData.viewproj = lightOrthoMatrix * lightViewMatrix;
+		lightData.view = lightViewMatrix;
+
+		vmaMapMemory(_allocator, get_current_frame().cascadesBuffers[i]._allocation, &cascadeData);
+
+		memcpy(cascadeData, &lightData, sizeof(GPUCameraData));
+
+		vmaUnmapMemory(_allocator, get_current_frame().cascadesBuffers[i]._allocation);
+	}
+
+	void* cascadesSetData;
+	CascadesSet cascadesSet;
+	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		cascadesSet.cascadeSplits[i] = get_current_frame().cascades[i].splitDepth;
+		cascadesSet.cascadeViewProjMat[i] = get_current_frame().cascades[i].viewProjMatrix;
+	}
+	
+	vmaMapMemory(_allocator, get_current_frame().cascadesSetBuffer._allocation, &cascadesSetData);
+
+	memcpy(cascadesSetData, &cascadesSet, sizeof(CascadesSet));
+
+	vmaUnmapMemory(_allocator, get_current_frame().cascadesSetBuffer._allocation);
+}
+
+
+void VulkanEngine::update_csm(VkCommandBuffer cmd, RenderObject* first, int count, int cascadesIndex)
+{
+
+	int frameIndex = _frameNumber % FRAME_OVERLAP;
+
+	std::vector<IndirectBatch> draws = compact_draws(first, count);
+
+	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, get_material("directDepth")->pipeline);
+
+	uint32_t uniform_offset = pad_uniform_buffer_size(sizeof(GPUSceneData)) * frameIndex;
+
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, get_material("directDepth")->pipelineLayout, 0, 1, &get_current_frame().cascades[cascadesIndex].descriptorSet, 1, &uniform_offset);
+
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, get_material("directDepth")->pipelineLayout, 1, 1, &get_current_frame().objectDescriptor, 0, nullptr);
+
+	for (IndirectBatch& draw : draws)
+	{
+		VkDeviceSize offset = 0;
+		vkCmdBindVertexBuffers(cmd, 0, 1, &draw.mesh->_vertexBuffer._buffer, &offset);
+
+		VkDeviceSize indirect_offset = draw.first * sizeof(VkDrawIndirectCommand);
+		uint32_t draw_stride = sizeof(VkDrawIndirectCommand);
+
+		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffer._buffer, indirect_offset, draw.count, draw_stride);
+	}
+}
+
 void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int count)
 {
 
@@ -1591,9 +2037,12 @@ void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int cou
 
 	vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
 
-	_sceneParameters.lightColor = { 1.0,1.0,1.0 };
+	_sceneParameters.lightColor = { 3.0,3.0,3.0 };
+	_sceneParameters.lightDir = { 0.0,0.0,0.0 };
 	_sceneParameters.zNear = 140.0f;
+	_sceneParameters.zNear = 80.0f;
 	_sceneParameters.zFar = 240.0f;
+	_sceneParameters.zFar = 600.0f;
 	char* sceneData;
 	vmaMapMemory(_allocator, _sceneParameterBuffer._allocation, (void**)&sceneData);
 
@@ -1612,10 +2061,12 @@ void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int cou
 
 	glm::mat4 view = glm::lookAt(_lightPos, _lightFoc, glm::vec3(0.0f, 1.0f, 0.0f));
 	glm::mat4 projection = clip * glm::perspective(glm::radians(45.0f), _shadowExtent.width / (float)_shadowExtent.height, _sceneParameters.zNear, _sceneParameters.zFar);
+	//glm::mat4 projection = clip * glm::ortho(-140.0f * _shadowExtent.width / (float)_shadowExtent.height, 140.0f * _shadowExtent.width / (float)_shadowExtent.height, -140.0f, 140.0f, _sceneParameters.zNear, _sceneParameters.zFar);
 
 	GPUCameraData lightData;
 	lightData.pos = _lightPos;
 	lightData.viewproj = projection * view;
+	lightData.view = view;
 
 	void* data;
 	vmaMapMemory(_allocator, get_current_frame().lightBuffer._allocation, &data);
@@ -1624,12 +2075,13 @@ void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int cou
 
 	vmaUnmapMemory(_allocator, get_current_frame().lightBuffer._allocation);
 
-	view = glm::lookAt(_camPos, _foc, glm::vec3(0.0f, 1.0f, 0.0f));
-	projection = clip * glm::perspective(glm::radians(45.0f), _windowExtent.width / (float)_windowExtent.height, 10.0f, 100.0f);
+	view = glm::lookAt(_camera._camPos, _camera._foc, glm::vec3(0.0f, 1.0f, 0.0f));
+	projection = clip * glm::perspective(glm::radians(45.0f), _windowExtent.width / (float)_windowExtent.height, 0.1f, 200.0f);
 
 	GPUCameraData camData;
-	camData.pos = _camPos;
+	camData.pos = _camera._camPos;
 	camData.viewproj = projection * view;
+	camData.view = view;
 
 	vmaMapMemory(_allocator, get_current_frame().cameraBuffer._allocation, &data);
 
@@ -1654,7 +2106,9 @@ void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int cou
 
 		VkDeviceSize indirect_offset = draw.first * sizeof(VkDrawIndirectCommand);
 		uint32_t draw_stride = sizeof(VkDrawIndirectCommand);
+		for (size_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
 
+		}
 		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffer._buffer, indirect_offset, draw.count, draw_stride);
 	}
 }
@@ -1688,7 +2142,7 @@ void VulkanEngine::draw_gbuffer(VkCommandBuffer cmd, RenderObject* first, int co
 
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 2, 1, &get_current_frame().objectDescriptor, 0, nullptr);
 
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 3, 1, &_shadowMap, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 3, 1, &_csmSet, 0, nullptr);
 
 		if (draw.material->textureSet != VK_NULL_HANDLE) {
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, layout, 4, 1, &draw.material->textureSet, 0, nullptr);
@@ -1719,11 +2173,11 @@ void VulkanEngine::draw_objects(VkCommandBuffer cmd, RenderObject* first, int co
 
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 0, 1, &get_current_frame().globalDescriptor, 0, nullptr);
 
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 1, 1, &get_current_frame().lightDescriptor, 1, &uniform_offset);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 1, 1, &get_current_frame().cascadesSetDescriptor, 1, &uniform_offset);
 
 		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 2, 1, &get_current_frame().objectDescriptor, 0, nullptr);
 
-		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 3, 1, &_shadowMap, 0, nullptr);
+		vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 3, 1, &_csmSet, 0, nullptr);
 
 		if (draw.material->textureSet != VK_NULL_HANDLE) {
 			vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, draw.material->pipelineLayout, 4, 1, &draw.material->textureSet, 0, nullptr);
@@ -1771,6 +2225,91 @@ void VulkanEngine::init_scene()
 
 	};
 
+	std::vector<std::string> nameVec1 = {
+	"Sidewalk_Plane",
+	"road_2_Plane.002",
+	"road_2.001_Plane.004",
+	"Cube.010_Cube.019",
+	"Cube.016_Cube.031",
+	"Cube.020_Cube.035",
+	"Cube.023_Cube.038",
+	"Cylinder_Cylinder.001",
+	"Cylinder.001_Cylinder.003",
+	"Building_1_Plane.006",
+	"Building_1.001_Plane.005",
+	"Building_2_Cube.001",
+	"Building_2.001_Cube.010",
+	"Building_3_Cube.022",
+	"Building_4_Cube.009",
+	"Building_4.001_Cube.013",
+	"Building_5_Cube.027",
+	"Building_6_Cube.008",
+	"Plane.005_Plane.017",
+	"Cube.001",
+	"Cube.001_Cube.002",
+	"Cube.002_Cube.003",
+	"Cube.007_Cube.016",
+	"Cube.008_Cube.018",
+	"Cube.003_Cube.004",
+	"Cube.005",
+	"Cube.004_Cube.051",
+	"Cube.006_Cube.012",
+	"Cube.009_Cube.021",
+	"Cube.011_Cube.024",
+	"Cube.012_Cube.025",
+	"Cube.013_Cube.026",
+	"Cube.014_Cube.029",
+	"Cube.015_Cube.030",
+	"Cube.017_Cube.032",
+	"Cube.018_Cube.033",
+	"Cube.019_Cube.034",
+	"Cube.021_Cube.036",
+	"Cube.022_Cube.037"
+	};
+
+	const std::unordered_map<std::string, std::string> texMap1 = {
+	{"Sidewalk_Plane", "Side walk" },
+		{"road_2_Plane.002","Center road"},
+		{"road_2.001_Plane.004", "Road"},
+		{"Cube.010_Cube.019", "Bark"},
+		{"Cube.016_Cube.031", "Bark"},
+		{"Cube.020_Cube.035", "Bark"},
+		{"Cube.023_Cube.038", "Bark"},
+		{"Cylinder_Cylinder.001", "Bark"},
+		{"Cylinder.001_Cylinder.003", "Bark"},
+		{"Building_1_Plane.006", "Building 1"},
+		{"Building_1.001_Plane.005", "Building 1"},
+		{"Building_2_Cube.001", "Building 2"},
+		{"Building_2.001_Cube.010","Building 2"},
+		{"Building_3_Cube.022", "Building 3"},
+		{"Building_4_Cube.009", "Building 4"},
+		{"Building_4.001_Cube.013", "Building 4"},
+		{"Building_5_Cube.027", "Building 5"},
+		{"Building_6_Cube.008", "Building 6"},
+		{"Plane.005_Plane.017", "Building 7"},
+		{"Cube.001", "Building 8"},
+		{"Cube.001_Cube.002", "Building 8"},
+		{"Cube.002_Cube.003", "Building 8"},
+		{"Cube.007_Cube.016", "Building 8"},
+		{"Cube.008_Cube.018", "Building 8"},
+		{"Cube.003_Cube.004", "Building 1"},
+		{"Cube.005", "Building 1"},
+		{"Cube.004_Cube.051", "Building 10"},
+		{"Cube.006_Cube.012", "Building 11"},
+		{"Cube.009_Cube.021", "Leaf 2"},
+		{"Cube.011_Cube.024", "Leaf 2"},
+		{"Cube.012_Cube.025", "Bark"},
+		{"Cube.013_Cube.026", "Leaf 2"},
+		{"Cube.014_Cube.029", "Leaf 2"},
+		{"Cube.015_Cube.030", "Bark"},
+		{"Cube.017_Cube.032", "Leaf 2"},
+		{"Cube.018_Cube.033", "Leaf 2"},
+		{"Cube.019_Cube.034", "Bark"},
+		{"Cube.021_Cube.036", "Leaf 2"},
+		{"Cube.022_Cube.037", "Bark"},
+		
+	};
+
 	const std::unordered_map<std::string, size_t> texMap = {
 	{"Glass_border_Cube.005", 1 },
 		{"Glass_Cube.004", 2},
@@ -1795,10 +2334,8 @@ void VulkanEngine::init_scene()
 		{"Plane.002_Plane.003", -1},
 
 	};
-	static auto startTime = std::chrono::high_resolution_clock::now();
 
-	auto currentTime = std::chrono::high_resolution_clock::now();
-	float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+	/*
 	for (auto n : nameVec) {
 		RenderObject obj;
 		obj.mesh = get_mesh(n);
@@ -1807,17 +2344,25 @@ void VulkanEngine::init_scene()
 		obj.transformMatrix = glm::mat4(1.0f);
 		_renderables.push_back(obj);
 	}
+	*/
+	for (auto n : nameVec1) {
+		RenderObject obj;
+		obj.mesh = get_mesh(n);
+		obj.material = get_material(texMap1.at(n));
+		obj.transformMatrix = glm::mat4(1.0f);
+		_renderables.push_back(obj);
+	}
 
 
-	VkSamplerCreateInfo samplerInfo = vkinit::sampler_create_info(VK_FILTER_NEAREST);
-	VkSamplerCreateInfo shadowSamplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR);
-	VkSampler blockySampler;
-	vkCreateSampler(_device, &samplerInfo, nullptr, &blockySampler);
+	VkSamplerCreateInfo samplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR);
+	VkSamplerCreateInfo shadowSamplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+	VkSampler imgSampler;
+	vkCreateSampler(_device, &samplerInfo, nullptr, &imgSampler);
 
 	vkCreateSampler(_device, &shadowSamplerInfo, nullptr, &_shadowSampler);
 
 	_mainDeletionQueue.push_function([=]() {
-		vkDestroySampler(_device, blockySampler, nullptr);
+		vkDestroySampler(_device, imgSampler, nullptr);
 		vkDestroySampler(_device, _shadowSampler, nullptr);
 		});
 	
@@ -1827,12 +2372,26 @@ void VulkanEngine::init_scene()
 		_descriptorAllocator->allocate(&texMat->textureSet, _singleTextureSetLayout);
 
 		VkDescriptorImageInfo imageBufferInfo;
-		imageBufferInfo.sampler = blockySampler;
+		imageBufferInfo.sampler = imgSampler;
 		imageBufferInfo.imageView = _loadedTextures[name].imageView;
 		imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
-			.bind_image(0, &imageBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bind_image(0, 1, &imageBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(texMat->textureSet);
+	}
+
+	for (auto name : TEXTURE_NAMES1) {
+		Material* texMat = get_material(name);
+		_descriptorAllocator->allocate(&texMat->textureSet, _singleTextureSetLayout);
+
+		VkDescriptorImageInfo imageBufferInfo;
+		imageBufferInfo.sampler = imgSampler;
+		imageBufferInfo.imageView = _loadedTextures[name].imageView;
+		imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
+			.bind_image(0, 1, &imageBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 			.build(texMat->textureSet);
 	}
 
@@ -1844,23 +2403,36 @@ void VulkanEngine::init_scene()
 	shadowBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
-		.bind_image(0, &shadowBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(0, 1, &shadowBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(_shadowMap);
+
+	_descriptorAllocator->allocate(&_csmSet, _csmSetLayout);
+
+	
+	VkDescriptorImageInfo csmBufferInfo;
+	
+	csmBufferInfo.sampler = _shadowSampler;
+	csmBufferInfo.imageView = _depthView;
+	csmBufferInfo.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	
+	vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
+		.bind_image(0, 1, &csmBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.build(_csmSet);
 
 	_descriptorAllocator->allocate(&_gBuffer, _gBufferSetLayout);
 
-	VkDescriptorImageInfo gBufferInfo1 = vkinit::descriptor_image_info(blockySampler, _gBufferPosImageView);
-	VkDescriptorImageInfo gBufferInfo2 = vkinit::descriptor_image_info(blockySampler, _gBufferColorImageView);
-	VkDescriptorImageInfo gBufferInfo3 = vkinit::descriptor_image_info(blockySampler, _gBufferNormalImageView);
-	VkDescriptorImageInfo gBufferInfo4 = vkinit::descriptor_image_info(blockySampler, _gBufferVisibilityImageView);
-	VkDescriptorImageInfo gBufferInfo5 = vkinit::descriptor_image_info(blockySampler, _gBufferDepthRGBAImageView);
+	VkDescriptorImageInfo gBufferInfo1 = vkinit::descriptor_image_info(imgSampler, _gBufferPosImageView);
+	VkDescriptorImageInfo gBufferInfo2 = vkinit::descriptor_image_info(imgSampler, _gBufferColorImageView);
+	VkDescriptorImageInfo gBufferInfo3 = vkinit::descriptor_image_info(imgSampler, _gBufferNormalImageView);
+	VkDescriptorImageInfo gBufferInfo4 = vkinit::descriptor_image_info(imgSampler, _gBufferVisibilityImageView);
+	VkDescriptorImageInfo gBufferInfo5 = vkinit::descriptor_image_info(imgSampler, _gBufferDepthRGBAImageView);
 
 	vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
-		.bind_image(0, &gBufferInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bind_image(1, &gBufferInfo2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bind_image(2, &gBufferInfo3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bind_image(3, &gBufferInfo4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-		.bind_image(4, &gBufferInfo5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(0, 1, &gBufferInfo1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(1, 1, &gBufferInfo2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(2, 1, &gBufferInfo3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(3, 1, &gBufferInfo4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+		.bind_image(4, 1, &gBufferInfo5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
 		.build(_gBuffer);
 
 }
@@ -1984,6 +2556,7 @@ void VulkanEngine::init_descriptors()
 	set4info.pBindings = bindings;
 
 	_lightSetLayout = _descriptorLayoutCache->create_descriptor_layout(&set4info);
+	_cascadesSetLayout = _descriptorLayoutCache->create_descriptor_layout(&set4info);
 
 	VkDescriptorSetLayoutCreateInfo set5info = {};
 	set5info.bindingCount = 5;
@@ -2012,11 +2585,24 @@ void VulkanEngine::init_descriptors()
 
 	_cullSetLayout = _descriptorLayoutCache->create_descriptor_layout(&set6info);
 
+	VkDescriptorSetLayoutBinding cascadeBindings = vkinit::descriptorset_layout_binding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+	VkDescriptorSetLayoutCreateInfo csmSetInfo = {};
+	csmSetInfo.bindingCount = 1;
+	csmSetInfo.flags = 0;
+	csmSetInfo.pNext = nullptr;
+	csmSetInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	csmSetInfo.pBindings = &cascadeBindings;
+
+	_csmSetLayout = _descriptorLayoutCache->create_descriptor_layout(&csmSetInfo);
 
 	for (int i = 0; i < FRAME_OVERLAP; i++)
 	{
 		_frames[i].cameraBuffer = create_buffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
 		_frames[i].lightBuffer = create_buffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		_frames[i].cascadesSetBuffer = create_buffer(sizeof(CascadesSet), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+			_frames[i].cascadesBuffers[j] = create_buffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		}
 
 		const int MAX_OBJECTS = 10000;
 		_frames[i].objectBuffer = create_buffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -2031,6 +2617,7 @@ void VulkanEngine::init_descriptors()
 		_descriptorAllocator->allocate(&_frames[i].objectDescriptor, _objectSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].cullDescriptor, _cullSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].cullShadowDescriptor, _cullSetLayout);
+		_descriptorAllocator->allocate(&_frames[i].cascadesSetDescriptor, _cascadesSetLayout);
 
 		VkDescriptorBufferInfo cameraInfo;
 		cameraInfo.buffer = _frames[i].cameraBuffer._buffer;
@@ -2067,10 +2654,34 @@ void VulkanEngine::init_descriptors()
 		lightBufferInfo.offset = 0;
 		lightBufferInfo.range = sizeof(GPUCameraData);
 
+		VkDescriptorBufferInfo cascadesSetBufferInfo;
+		cascadesSetBufferInfo.buffer = _frames[i].cascadesSetBuffer._buffer;
+		cascadesSetBufferInfo.offset = 0;
+		cascadesSetBufferInfo.range = sizeof(CascadesSet);
+
+
+		std::array<VkDescriptorBufferInfo, SHADOW_MAP_CASCADE_COUNT> cascadesBufferInfo;
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+			cascadesBufferInfo[j].buffer = _frames[i].cascadesBuffers[j]._buffer;
+			cascadesBufferInfo[j].offset = 0;
+			cascadesBufferInfo[j].range = sizeof(GPUCameraData);
+
+			vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
+				.bind_buffer(0, &cascadesBufferInfo[j], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+				.bind_buffer(1, &sceneInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+				.build(_frames[i].cascades[j].descriptorSet);
+		}
+
 		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
 			.bind_buffer(0, &lightBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
 			.bind_buffer(1, &sceneInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
 			.build(_frames[i].lightDescriptor);
+
+		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
+			.bind_buffer(0, &cascadesSetBufferInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.bind_buffer(1, &sceneInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
+			.build(_frames[i].cascadesSetDescriptor);
+
 
 		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
 			.bind_buffer(0, &cameraInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT)
@@ -2114,52 +2725,36 @@ void VulkanEngine::init_descriptors()
 void VulkanEngine::key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
     VulkanEngine* myEngine = static_cast<VulkanEngine*>(glfwGetWindowUserPointer(window));
-    glm::vec3 dir = myEngine->_foc - myEngine->_camPos;
+    glm::vec3 dir = myEngine->_camera._foc - myEngine->_camera._camPos;
     dir[1] = 0.0f;
-    glm::vec3 forward = glm::normalize(dir);
-    glm::vec3 right = glm::cross(forward, glm::vec3{0.0f, 1.0f, 0.0f});
+    glm::vec3 forward = glm::normalize(dir) * 0.25f;
+    glm::vec3 right = glm::cross(glm::normalize(dir), glm::vec3{0.0f, 1.0f, 0.0f}) * 0.25f;
     if (action == GLFW_REPEAT || action == GLFW_PRESS) {
         switch (key)
         {
         case GLFW_KEY_A:
-            if (myEngine->_camPos.x - right.x > -40.0f &&
-                myEngine->_camPos.x - right.x < 20.0f &&
-                myEngine->_camPos.z - right.z > 10.0f &&
-                myEngine->_camPos.z - right.z < 45.0f) {
-                myEngine->_camPos -= right;
-                myEngine->_foc -= right;
-                myEngine->_oriFoc -= right;
-            }
+		
+			myEngine->_camera._camPos -= right;
+			myEngine->_camera._foc -= right;
+			myEngine->_camera._oriFoc -= right;
             break;
         case GLFW_KEY_D:
-            if (myEngine->_camPos.x + right.x > -40.0f &&
-                myEngine->_camPos.x + right.x < 20.0f &&
-                myEngine->_camPos.z + right.z > 10.0f &&
-                myEngine->_camPos.z + right.z < 45.0f) {
-                myEngine->_camPos += right;
-                myEngine->_foc += right;
-                myEngine->_oriFoc += right;
-            }
+            
+			myEngine->_camera._camPos += right;
+			myEngine->_camera._foc += right;
+			myEngine->_camera._oriFoc += right;
             break;
         case GLFW_KEY_W:
-            if (myEngine->_camPos.x + forward.x > -40.0f &&
-                myEngine->_camPos.x + forward.x < 20.0f &&
-                myEngine->_camPos.z + forward.z > 10.0f &&
-                myEngine->_camPos.z + forward.z < 45.0f) {
-                myEngine->_camPos += forward;
-                myEngine->_foc += forward;
-                myEngine->_oriFoc += forward;
-            }
+            
+			myEngine->_camera._camPos += forward;
+			myEngine->_camera._foc += forward;
+			myEngine->_camera._oriFoc += forward;
             break;
         case GLFW_KEY_S:
-            if (myEngine->_camPos.x - forward.x > -40.0f &&
-                myEngine->_camPos.x - forward.x < 20.0f &&
-                myEngine->_camPos.z - forward.z > 10.0f &&
-                myEngine->_camPos.z - forward.z < 45.0f) {
-                myEngine->_camPos -= forward;
-                myEngine->_foc -= forward;
-                myEngine->_oriFoc -= forward;
-            }
+            
+			myEngine->_camera._camPos -= forward;
+			myEngine->_camera._foc -= forward;
+			myEngine->_camera._oriFoc -= forward;
             break;
         default:
             break;
@@ -2174,14 +2769,14 @@ void VulkanEngine::mouse_button_callback(GLFWwindow* window, int button, int act
     {
         double xpos, ypos;
         glfwGetCursorPos(window, &xpos, &ypos);
-        myEngine->_posPress = glm::vec2(xpos, ypos);
+        myEngine->_camera._posPress = glm::vec2(xpos, ypos);
     }
     else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE)
     {
-        myEngine->_horAngle = myEngine->_horAngle + myEngine->_horAngleOffset;
-        myEngine->_verAngle = myEngine->_verAngle + myEngine->_verAngleOffset;
-        myEngine->_horAngleOffset = 0.0f;
-        myEngine->_verAngleOffset = 0.0f;
+        myEngine->_camera._horAngle = myEngine->_camera._horAngle + myEngine->_camera._horAngleOffset;
+        myEngine->_camera._verAngle = myEngine->_camera._verAngle + myEngine->_camera._verAngleOffset;
+        myEngine->_camera._horAngleOffset = 0.0f;
+        myEngine->_camera._verAngleOffset = 0.0f;
     }
 }
 
@@ -2191,30 +2786,23 @@ void VulkanEngine::cursor_position_callback(GLFWwindow* window, double xpos, dou
     int state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
     if (state == GLFW_PRESS) {
 
-        myEngine->_horAngleOffset = (myEngine->_posPress.x - xpos) * 45.0f / (float)myEngine->_windowExtent.width;
-        myEngine->_verAngleOffset = (myEngine->_posPress.y - ypos) * 45.0f / (float)myEngine->_windowExtent.height;
-
-        if (myEngine->_horAngle + myEngine->_horAngleOffset > 90.0f) {
-            myEngine->_horAngleOffset = 90.0f - myEngine->_horAngle;
-        }
-        else if (myEngine->_horAngle + myEngine->_horAngleOffset < -90.0f) {
-            myEngine->_horAngleOffset = -90.0f - myEngine->_horAngle;
-        }
+        myEngine->_camera._horAngleOffset = (myEngine->_camera._posPress.x - xpos) * 45.0f / (float)myEngine->_windowExtent.width;
+        myEngine->_camera._verAngleOffset = (myEngine->_camera._posPress.y - ypos) * 45.0f / (float)myEngine->_windowExtent.height;
 
 
-        if (myEngine->_verAngle + myEngine->_verAngleOffset > 30.0f) {
-            myEngine->_verAngleOffset = 30.0f - myEngine->_verAngle;
+        if (myEngine->_camera._verAngle + myEngine->_camera._verAngleOffset > 30.0f) {
+            myEngine->_camera._verAngleOffset = 30.0f - myEngine->_camera._verAngle;
         }
-        else if (myEngine->_verAngle + myEngine->_verAngleOffset < -30.0f) {
-            myEngine->_verAngleOffset = -30.0f - myEngine->_verAngle;
+        else if (myEngine->_camera._verAngle + myEngine->_camera._verAngleOffset < -30.0f) {
+            myEngine->_camera._verAngleOffset = -30.0f - myEngine->_camera._verAngle;
         }
 
-        glm::vec3 trans = -myEngine->_camPos;
-        glm::mat4 horizatal_rotate = glm::rotate(glm::mat4(1.0f), glm::radians(myEngine->_horAngle + myEngine->_horAngleOffset), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 vertical_rotate = glm::rotate(glm::mat4(1.0f), glm::radians(myEngine->_verAngle + myEngine->_verAngleOffset), glm::vec3(1.0f, 0.0f, 0.0f));
-        glm::vec4 focal = (glm::translate(glm::mat4(1.0), -trans) * horizatal_rotate * vertical_rotate * glm::translate(glm::mat4(1.0), trans) * glm::vec4(myEngine->_oriFoc, 1.0f));
+        glm::vec3 trans = -myEngine->_camera._camPos;
+        glm::mat4 horizatal_rotate = glm::rotate(glm::mat4(1.0f), glm::radians(myEngine->_camera._horAngle + myEngine->_camera._horAngleOffset), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 vertical_rotate = glm::rotate(glm::mat4(1.0f), glm::radians(myEngine->_camera._verAngle + myEngine->_camera._verAngleOffset), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::vec4 focal = (glm::translate(glm::mat4(1.0), -trans) * horizatal_rotate * vertical_rotate * glm::translate(glm::mat4(1.0), trans) * glm::vec4(myEngine->_camera._oriFoc, 1.0f));
         focal /= focal.w;
-        myEngine->_foc = glm::vec3(focal.x, focal.y, focal.z);
+        myEngine->_camera._foc = glm::vec3(focal.x, focal.y, focal.z);
     }
 
 }
@@ -2223,10 +2811,11 @@ void VulkanEngine::cursor_enter_callback(GLFWwindow* window, int entered)
 {
     VulkanEngine* myEngine = static_cast<VulkanEngine*>(glfwGetWindowUserPointer(window));
     if (!entered) {
-        myEngine->_horAngle = myEngine->_horAngle + myEngine->_horAngleOffset;
-        myEngine->_verAngle = myEngine->_verAngle + myEngine->_verAngleOffset;
-        myEngine->_horAngleOffset = 0.0f;
-        myEngine->_verAngleOffset = 0.0f;
+		int horAngleInt = static_cast<int>(myEngine->_camera._horAngle + myEngine->_camera._horAngleOffset);
+        myEngine->_camera._horAngle = (myEngine->_camera._horAngle + myEngine->_camera._horAngleOffset) - horAngleInt/360 * 360.0f;
+        myEngine->_camera._verAngle = myEngine->_camera._verAngle + myEngine->_camera._verAngleOffset;
+        myEngine->_camera._horAngleOffset = 0.0f;
+        myEngine->_camera._verAngleOffset = 0.0f;
     }
 
 }

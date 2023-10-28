@@ -159,7 +159,7 @@ VkPipelineRasterizationStateCreateInfo vkinit::rasterization_state_create_info(V
 	info.polygonMode = polygonMode;
 	info.lineWidth = 1.0f;
 	info.cullMode = VK_CULL_MODE_NONE;
-	info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+	info.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	info.depthBiasEnable = VK_FALSE;
 	info.depthBiasConstantFactor = 0.0f;
 	info.depthBiasClamp = 0.0f;
@@ -203,7 +203,7 @@ VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info() {
 }
 
 
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, int imgCount, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
 {
 	VkImageCreateInfo info = { };
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -215,7 +215,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags u
 	info.extent = extent;
 
 	info.mipLevels = 1;
-	info.arrayLayers = 1;
+	info.arrayLayers = imgCount;
 	info.samples = samples;
 	info.tiling = VK_IMAGE_TILING_OPTIMAL;
 	info.usage = usageFlags;

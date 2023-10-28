@@ -209,11 +209,11 @@ namespace vkutil {
 	}
 
 
-	vkutil::DescriptorBuilder& DescriptorBuilder::bind_image(uint32_t binding, VkDescriptorImageInfo* imageInfo, VkDescriptorType type, VkShaderStageFlags stageFlags)
+	vkutil::DescriptorBuilder& DescriptorBuilder::bind_image(uint32_t binding, int imgCount, VkDescriptorImageInfo* imageInfo, VkDescriptorType type, VkShaderStageFlags stageFlags)
 	{
 		VkDescriptorSetLayoutBinding newBinding{};
 
-		newBinding.descriptorCount = 1;
+		newBinding.descriptorCount = imgCount;
 		newBinding.descriptorType = type;
 		newBinding.pImmutableSamplers = nullptr;
 		newBinding.stageFlags = stageFlags;

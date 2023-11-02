@@ -39,9 +39,10 @@ bool vkutil::load_image_from_file(VulkanEngine& engine, std::string file, Alloca
 	imageExtent.height = static_cast<uint32_t>(texHeight);
 	imageExtent.depth = 1;
 
-	VkImageCreateInfo dimg_info = vkinit::image_create_info(image_format,1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, imageExtent, VK_SAMPLE_COUNT_1_BIT);
-
 	AllocatedImage newImage;
+	newImage._mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
+	VkImageCreateInfo dimg_info = vkinit::image_create_info(image_format,1, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT, imageExtent, VK_SAMPLE_COUNT_1_BIT, newImage._mipLevels);
+
 
 	VmaAllocationCreateInfo dimg_allocinfo = {};
 	dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -85,12 +86,75 @@ bool vkutil::load_image_from_file(VulkanEngine& engine, std::string file, Alloca
 		VkImageMemoryBarrier imageBarrier_toReadable = imageBarrier_toTransfer;
 
 		imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-		imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
 		imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		imageBarrier_toReadable.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+
+		for (uint32_t i = 1; i < newImage._mipLevels; i++)
+		{
+			VkImageBlit imageBlit{};
+
+			imageBlit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			imageBlit.srcSubresource.layerCount = 1;
+			imageBlit.srcSubresource.mipLevel = i - 1;
+			imageBlit.srcOffsets[1].x = int32_t(texWidth >> (i - 1));
+			imageBlit.srcOffsets[1].y = int32_t(texHeight >> (i - 1));
+			imageBlit.srcOffsets[1].z = 1;
+
+			imageBlit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			imageBlit.dstSubresource.layerCount = 1;
+			imageBlit.dstSubresource.mipLevel = i;
+			imageBlit.dstOffsets[1].x = int32_t(texWidth >> i);
+			imageBlit.dstOffsets[1].y = int32_t(texHeight >> i);
+			imageBlit.dstOffsets[1].z = 1;
+
+			VkImageSubresourceRange mipSubRange = {};
+			mipSubRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			mipSubRange.baseMipLevel = i;
+			mipSubRange.levelCount = 1;
+			mipSubRange.layerCount = 1;
+
+			imageBarrier_toReadable.subresourceRange = mipSubRange;
+			imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+			imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+			imageBarrier_toReadable.srcAccessMask = 0;
+			imageBarrier_toReadable.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+
+
+			vkCmdBlitImage(
+				cmd,
+				newImage._image,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				newImage._image,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1,
+				&imageBlit,
+				VK_FILTER_LINEAR);
+			
+			imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+			imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+			imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			imageBarrier_toReadable.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+
+			vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+
+		}
+		imageBarrier_toReadable.subresourceRange = range;
+		imageBarrier_toReadable.subresourceRange.levelCount = newImage._mipLevels;
+		imageBarrier_toReadable.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		imageBarrier_toReadable.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		imageBarrier_toReadable.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 		imageBarrier_toReadable.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
 		vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 1, &imageBarrier_toReadable);
+		
 		});
 
 
@@ -99,10 +163,27 @@ bool vkutil::load_image_from_file(VulkanEngine& engine, std::string file, Alloca
 		vmaDestroyImage(engine._allocator, newImage._image, newImage._allocation);
 		});
 
+	VkPhysicalDeviceProperties properties{};
+	vkGetPhysicalDeviceProperties(engine._chosenGPU, &properties);
+
+	VkSamplerCreateInfo samplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR);
+	samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	samplerInfo.mipLodBias = 0.0f;
+	samplerInfo.compareOp = VK_COMPARE_OP_NEVER;
+	samplerInfo.minLod = 0.0f;
+	samplerInfo.maxLod = (float)newImage._mipLevels;
+	samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+	samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
+	samplerInfo.anisotropyEnable = VK_TRUE;
+
+	vkCreateSampler(engine._device, &samplerInfo, nullptr, &newImage._sampler);
+
 	vmaDestroyBuffer(engine._allocator, stagingBuffer._buffer, stagingBuffer._allocation);
 
 	std::cout << "Texture loaded succesfully " << file << std::endl;
 
 	outImage = newImage;
 	return true;
+
+
 }

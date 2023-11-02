@@ -23,8 +23,9 @@ layout(set = 0, binding = 0) uniform  CameraBuffer{
 } cameraData;
 
 layout (set = 1, binding = 0) uniform csmBuffer{
-	vec4 cascadeSplits;
+	mat4 cascadeSplits;
 	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+    mat4 frustumSizes;
 } csmData;
 
 layout(set = 1, binding = 1) uniform  SceneData{   
@@ -99,9 +100,29 @@ float sampleShadowMap(sampler2DArray shadowMapSampler, vec4 shadow_map_coord, ui
     float visibility = 1.0;
 
     if (texture(shadowMapSampler, vec3(shadow_map_coord.xy, cascadeIndex)).r < (shadow_map_coord.z - bias))
-        visibility = 0.3;
+        visibility = 0.0;
 
     return visibility;
+}
+float filterPCF(vec4 shadow_map_coord, uint cascadeIndex, float bias)
+{
+	ivec2 texDim = textureSize(shadowMapSampler, 0).xy;
+	float scale = 1.5;
+	float dx = scale * 1.0 / float(texDim.x);
+	float dy = scale * 1.0 / float(texDim.y);
+
+	float shadowFactor = 0.0;
+	int count = 0;
+	int range = 1;
+	
+	for (int x = -range; x <= range; x++) {
+		for (int y = -range; y <= range; y++) {
+            vec4 offset = vec4(vec2(dx*x, dy*y), 0.0, 0.0);
+			shadowFactor += sampleShadowMap(shadowMapSampler, shadow_map_coord + offset, cascadeIndex, bias);
+			count++;
+		}
+	}
+	return shadowFactor / count;
 }
 
 float PCF(sampler2DArray shadowMapSampler, vec4 shadow_map_coord, float radius, uint cascadeIndex, float bias) {
@@ -111,6 +132,7 @@ float PCF(sampler2DArray shadowMapSampler, vec4 shadow_map_coord, float radius, 
     for(int i = 0; i < NUM_SAMPLES; i++) {
         vec4 offset = vec4(radius * sampleDisk[i], 0.0, 0.0);
         visibility += sampleShadowMap(shadowMapSampler, shadow_map_coord + offset, cascadeIndex, bias);
+
     }
 
     return visibility / NUM_SAMPLES;
@@ -121,11 +143,12 @@ float PCSS(sampler2DArray shadowMapSampler, vec4 shadow_map_coord, float dReceiv
   if (dBlock == -1.0)
     return 1.0;
 
-  float wPenumbra = (dReceiver - dBlock) * LIGHT_SIZE / dBlock;
+  float wPenumbra = (dReceiver - dBlock) * LIGHT_SIZE / (dBlock);
   float visibility =  PCF(shadowMapSampler, shadow_map_coord, wPenumbra, cascadeIndex, bias);
 
   return visibility;
 }
+
 
 
 void main() {
@@ -137,33 +160,38 @@ void main() {
     float cos = max(0.0, dot(normal_vector, light_vector));
 
     float bias = max(0.005 * (1.0 - cos), 0.004);
-    bias = max(0.001 * (1.0 - cos), 0.0005);
+    bias = max(0.001* (1.0 - cos), 0.001);
+
     uint cascadeIndex = 0;
+
 	for(uint i = 0; i < SHADOW_MAP_CASCADE_COUNT - 1; ++i) {
-		if(inViewPos.z < csmData.cascadeSplits[i]) {	
-			cascadeIndex = i + 1;
+        uint rowIndex = i / 4;
+		uint colIndex = i % 4;
+		if(inViewPos.z < csmData.cascadeSplits[rowIndex][colIndex]) {	
+			cascadeIndex = i + 1; 
 		}
 	}
+    
 
-    //cascadeIndex = 0;
+    //cascadeIndex = 6;
 
-    //bias *= -1.0/(-1.0-csmData.cascadeSplits[cascadeIndex]);
+    //bias *= -10.0/(inViewPos.z);
 
     vec4 coord = biasMat* csmData.cascadeViewProjMat[cascadeIndex] * fragPosition;
     vec4 shadow_map_coord = coord / coord.w;
-    shadow_map_coord /= shadow_map_coord.w;
 
-    float visibility = PCSS(shadowMapSampler, shadow_map_coord, coord.z, cascadeIndex ,bias);
-    //visibility = sampleShadowMap(shadowMapSampler, shadow_map_coord ,cascadeIndex, bias);
+    float visibility;
+    
+    visibility = PCSS(shadowMapSampler, shadow_map_coord, coord.z, cascadeIndex ,bias);
+    //visibility = filterPCF(shadow_map_coord, cascadeIndex, bias);
+
     vec3 half_vector = normalize(light_vector + view_vector);
     vec3 diffuse = sceneData.lightEmit * BSDF * cos;
     vec3 Le =  diffuse;
 
-    outColor = vec4(Le * visibility + color * 0.2, 1.0);
-    //float shadowMapDepth = texture(shadowMapSampler, vec3(shadow_map_coord.xy,cascadeIndex)).r;
-    //outColor = vec4(shadowMapDepth);
+    outColor = vec4(Le * visibility + color * 0.5, 1.0);
 
     //vec4 testColor = vec4(0.0);
-    //testColor[cascadeIndex] = 1.0;
+    //testColor[cascadeIndex%4] += 0.25;
     //outColor = testColor;
 }

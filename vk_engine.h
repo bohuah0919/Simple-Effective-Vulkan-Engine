@@ -41,7 +41,8 @@ struct Cascade {
 	VkFramebuffer frameBuffer;
 	VkDescriptorSet descriptorSet;
 	VkImageView view;
-
+	
+	float radius;
 	float splitDepth;
 	glm::mat4 viewProjMatrix;
 
@@ -140,10 +141,10 @@ struct FrameData {
 
 	AllocatedBuffer instanceBuffer;
 	VkDescriptorSet cullDescriptor;
-	VkDescriptorSet cullShadowDescriptor;
+	std::array<VkDescriptorSet, SHADOW_MAP_CASCADE_COUNT> cullCascadeDescriptors;
 
 	AllocatedBuffer indirectBuffer;
-	AllocatedBuffer indirectShadowBuffer;
+	std::array<AllocatedBuffer, SHADOW_MAP_CASCADE_COUNT> indirectShadowBuffers;
 };
 
 struct Camera {
@@ -161,8 +162,9 @@ struct Camera {
 };
 
 struct CascadesSet {
-	alignas(16) glm::vec4 cascadeSplits;
+	alignas(4) glm::mat4 cascadeSplits;
 	alignas(16) glm::mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+	alignas(16) glm::mat4 cascadeSizes;
 };
 
 struct UploadContext {
@@ -196,6 +198,7 @@ struct GPUInstance {
 struct CullConstants {
 	alignas(16) glm::mat4 view;
 	alignas(16) glm::vec4 frustum;
+	alignas(4) float distance;
 	alignas(4) float znear;
 	alignas(4) float zfar;
 	alignas(4) uint32_t count;
@@ -341,15 +344,13 @@ public:
 
 	std::vector<IndirectBatch> compact_draws(RenderObject* objects, int count);
 
-	void execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count);
+	void execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count, int cascadesIndex);
 
 	void execute_culling(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void draw_objects(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void draw_gbuffer(VkCommandBuffer cmd, RenderObject* first, int count);
-
-	void draw_shadow(VkCommandBuffer cmd, RenderObject* first, int count);
 
 	void prepare_depthpass();
 

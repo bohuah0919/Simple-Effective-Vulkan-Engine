@@ -6,6 +6,7 @@ struct cullData
 {
 	mat4 view;
 	vec4 frustum;
+	float distance;
 	float znear;
 	float zfar;
 	uint count;
@@ -45,18 +46,19 @@ layout(set = 0, binding = 2)  buffer DrawCommandBuffer{
 
 bool isVisible(uint objectIndex)
 {
-	uint index = objectIndex;
 
+	uint index = objectIndex;
+	mat4 modelMatrix = objectBuffer.objects[index].model;
 	vec4 sphereBounds = objectBuffer.objects[index].spherebounds;
 
 	vec3 center = sphereBounds.xyz;
-	center = (cull.view * vec4(center,1.f)).xyz;
+	center = (cull.view * modelMatrix *vec4(center,1.f)).xyz;
 	float radius = sphereBounds.w;
 	
 	bool visible = true;
 
-	visible = visible && abs(center.z) * cull.frustum.x - abs(center.x) * cull.frustum.y > -radius;
-	visible = visible && abs(center.z) * cull.frustum.z - abs(center.y) * cull.frustum.w > -radius;
+	visible = visible && abs(center.z) * cull.frustum.x - abs(center.x) * cull.frustum.y > -(radius+cull.distance);
+	visible = visible && abs(center.z) * cull.frustum.z - abs(center.y) * cull.frustum.w > -(radius+cull.distance);
 
 	
 	//visible = visible && center.z + radius > cull.znear && center.z - radius < cull.zfar;

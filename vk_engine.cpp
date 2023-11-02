@@ -181,7 +181,10 @@ void VulkanEngine::draw()
 
 	VkCommandBuffer cmd;
 	cmd = get_current_frame()._cullShadowCommandBuffer;
-	execute_shadow_culling(cmd, _renderables.data(), _renderables.size());
+	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		execute_shadow_culling(cmd, _renderables.data(), _renderables.size(), i);
+	}
+	//execute_shadow_culling(cmd, _renderables.data(), _renderables.size(),0);
 
 	cmd = get_current_frame()._cullCommandBuffer;
 	execute_culling(cmd, _renderables.data(), _renderables.size());
@@ -439,7 +442,7 @@ void VulkanEngine::init_swapchain()
 	_depthFormat = VK_FORMAT_D32_SFLOAT;
 	_shadowMapFormat = VK_FORMAT_R8G8B8A8_SRGB;
 
-	VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, windowImageExtent, _msaaSamples);
+	VkImageCreateInfo dimg_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, windowImageExtent, _msaaSamples,1);
 
 	VmaAllocationCreateInfo dimg_allocinfo = {};
 	dimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
@@ -447,15 +450,15 @@ void VulkanEngine::init_swapchain()
 
 	vmaCreateImage(_allocator, &dimg_info, &dimg_allocinfo, &_depthImage._image, &_depthImage._allocation, nullptr);
 
-	VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo dview_info = vkinit::imageview_create_info(_depthFormat, _depthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT, 1);
 
 	VK_CHECK(vkCreateImageView(_device, &dview_info, nullptr, &_depthImageView));
 
-	VkImageCreateInfo dimg_shadow_info = vkinit::image_create_info(_depthFormat, 1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo dimg_shadow_info = vkinit::image_create_info(_depthFormat, 1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT,1);
 
 	vmaCreateImage(_allocator, &dimg_shadow_info, &dimg_allocinfo, &_shadowDepthImage._image, &_shadowDepthImage._allocation, nullptr);
 
-	VkImageViewCreateInfo dview_shadow_info = vkinit::imageview_create_info(_depthFormat, _shadowDepthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo dview_shadow_info = vkinit::imageview_create_info(_depthFormat, _shadowDepthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT,1);
 
 	VK_CHECK(vkCreateImageView(_device, &dview_shadow_info, nullptr, &_shadowDepthImageView));
 
@@ -463,23 +466,23 @@ void VulkanEngine::init_swapchain()
 	cimg_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	cimg_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	VkImageCreateInfo cimg_info = vkinit::image_create_info(_swachainImageFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, windowImageExtent, _msaaSamples);
+	VkImageCreateInfo cimg_info = vkinit::image_create_info(_swachainImageFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, windowImageExtent, _msaaSamples,1);
 
 	vmaCreateImage(_allocator, &cimg_info, &cimg_allocinfo, &_colorImage._image, &_colorImage._allocation, nullptr);
 
-	VkImageViewCreateInfo cview_info = vkinit::imageview_create_info(_swachainImageFormat, _colorImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
+	VkImageViewCreateInfo cview_info = vkinit::imageview_create_info(_swachainImageFormat, _colorImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
 
 	VK_CHECK(vkCreateImageView(_device, &cview_info, nullptr, &_colorImageView));
 
-	VkImageCreateInfo cimg_shadow_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo cimg_shadow_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT,1);
 
 	vmaCreateImage(_allocator, &cimg_shadow_info, &cimg_allocinfo, &_shadowColorImage._image, &_shadowColorImage._allocation, nullptr);
 
-	VkImageViewCreateInfo cview_shadow_info = vkinit::imageview_create_info(_shadowMapFormat, _shadowColorImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
+	VkImageViewCreateInfo cview_shadow_info = vkinit::imageview_create_info(_shadowMapFormat, _shadowColorImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
 
 	VK_CHECK(vkCreateImageView(_device, &cview_shadow_info, nullptr, &_shadowColorImageView));
 
-	VkImageCreateInfo cimg_gbuffer_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo cimg_gbuffer_info = vkinit::image_create_info(_shadowMapFormat,1, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT,1);
 
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferColorImage._image, &_gBufferColorImage._allocation, nullptr);
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferPosImage._image, &_gBufferPosImage._allocation, nullptr);
@@ -487,11 +490,11 @@ void VulkanEngine::init_swapchain()
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferVisibilityImage._image, &_gBufferVisibilityImage._allocation, nullptr);
 	vmaCreateImage(_allocator, &cimg_gbuffer_info, &cimg_allocinfo, &_gBufferDepthRGBAImage._image, &_gBufferDepthRGBAImage._allocation, nullptr);
 
-	VkImageViewCreateInfo cview_gbuffer_info1 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferColorImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
-	VkImageViewCreateInfo cview_gbuffer_info2 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferPosImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
-	VkImageViewCreateInfo cview_gbuffer_info3 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferNormalImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
-	VkImageViewCreateInfo cview_gbuffer_info4 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferVisibilityImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
-	VkImageViewCreateInfo cview_gbuffer_info5 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferDepthRGBAImage._image, VK_IMAGE_ASPECT_COLOR_BIT);
+	VkImageViewCreateInfo cview_gbuffer_info1 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferColorImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
+	VkImageViewCreateInfo cview_gbuffer_info2 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferPosImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
+	VkImageViewCreateInfo cview_gbuffer_info3 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferNormalImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
+	VkImageViewCreateInfo cview_gbuffer_info4 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferVisibilityImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
+	VkImageViewCreateInfo cview_gbuffer_info5 = vkinit::imageview_create_info(_shadowMapFormat, _gBufferDepthRGBAImage._image, VK_IMAGE_ASPECT_COLOR_BIT,1);
 
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info1, nullptr, &_gBufferColorImageView));
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info2, nullptr, &_gBufferPosImageView));
@@ -499,9 +502,9 @@ void VulkanEngine::init_swapchain()
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info4, nullptr, &_gBufferVisibilityImageView));
 	VK_CHECK(vkCreateImageView(_device, &cview_gbuffer_info5, nullptr, &_gBufferDepthRGBAImageView));
 
-	VkImageCreateInfo dimg_gbuffer_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo dimg_gbuffer_info = vkinit::image_create_info(_depthFormat,1, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, gBufferExtent, VK_SAMPLE_COUNT_1_BIT, 1);
 	vmaCreateImage(_allocator, &dimg_gbuffer_info, &dimg_allocinfo, &_gBufferDepthImage._image, &_gBufferDepthImage._allocation, nullptr);
-	VkImageViewCreateInfo dview_gbuffer_info = vkinit::imageview_create_info(_depthFormat, _gBufferDepthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo dview_gbuffer_info = vkinit::imageview_create_info(_depthFormat, _gBufferDepthImage._image, VK_IMAGE_ASPECT_DEPTH_BIT,1);
 	VK_CHECK(vkCreateImageView(_device, &dview_gbuffer_info, nullptr, &_gBufferDepthImageView));
 
 	_mainDeletionQueue.push_function([=]() {
@@ -1089,7 +1092,7 @@ void VulkanEngine::init_pipelines()
 		create_material(texPipeline, texturedPipeLayout, name);
 	}
 	*/
-	//
+	
 	pipelineBuilder._shaderStages.clear();
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
@@ -1103,7 +1106,7 @@ void VulkanEngine::init_pipelines()
 	for (auto name : TEXTURE_NAMES1) {
 		create_material(scenePipeline, scenePipeLayout, name);
 	}
-	//
+	
 	pipelineBuilder._shaderStages.clear();
 	pipelineBuilder._shaderStages.push_back(
 		vkinit::pipeline_shader_stage_create_info(VK_SHADER_STAGE_VERTEX_BIT, meshVertShader));
@@ -1407,13 +1410,6 @@ VkPipeline PipelineBuilder::build_pipeline(VkDevice device, VkRenderPass pass, i
 
 void VulkanEngine::load_meshes()
 {
-	Meshes chairsSet{};
-	chairsSet.load_from_obj("./assets/Table&Chair Set .obj");
-
-	for (auto m : chairsSet._meshes) {
-		upload_mesh(m);
-		_meshes[m.name] = m;
-	}
 
 	Meshes nyCity{};
 	nyCity.load_from_obj("./assets/NY_City/City Block OBJ/City block.obj");
@@ -1427,30 +1423,14 @@ void VulkanEngine::load_meshes()
 void VulkanEngine::load_images()
 {
 
-	/*
-	for (int i = 0; i < TEXTURE_PATHS.size(); i++) {
-
-		Texture tex;
-
-		vkutil::load_image_from_file(*this, TEXTURE_PATHS[i], tex.image);
-
-		VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
-		vkCreateImageView(_device, &imageinfo, nullptr, &tex.imageView);
-
-		_mainDeletionQueue.push_function([=]() {
-			vkDestroyImageView(_device, tex.imageView, nullptr);
-			});
-
-		_loadedTextures[TEXTURE_NAMES[i]] = tex;
-	}
-	*/
+	
 	for (int i = 0; i < TEXTURE_PATHS1.size(); i++) {
 
 		Texture tex;
 
 		vkutil::load_image_from_file(*this, TEXTURE_PATHS1[i], tex.image);
 
-		VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT);
+		VkImageViewCreateInfo imageinfo = vkinit::imageview_create_info(VK_FORMAT_R8G8B8A8_SRGB, tex.image._image, VK_IMAGE_ASPECT_COLOR_BIT, tex.image._mipLevels);
 		vkCreateImageView(_device, &imageinfo, nullptr, &tex.imageView);
 
 		_mainDeletionQueue.push_function([=]() {
@@ -1583,7 +1563,7 @@ std::vector<IndirectBatch> VulkanEngine::compact_draws(RenderObject* objects, in
 	return draws;
 };
 
-void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count)
+void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* first, int count, int cascadesIndex)
 {
 	VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
 
@@ -1619,7 +1599,7 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 	vmaUnmapMemory(_allocator, get_current_frame().instanceBuffer._allocation);
 
 	void* indirectShadowData;
-	vmaMapMemory(_allocator, get_current_frame().indirectShadowBuffer._allocation, &indirectShadowData);
+	vmaMapMemory(_allocator, get_current_frame().indirectShadowBuffers[cascadesIndex]._allocation, &indirectShadowData);
 
 	VkDrawIndirectCommand* drawShadowCommands = (VkDrawIndirectCommand*)indirectShadowData;
 
@@ -1632,11 +1612,11 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 		drawShadowCommands[i].firstInstance = i;
 	}
 
-	vmaUnmapMemory(_allocator, get_current_frame().indirectShadowBuffer._allocation);
+	vmaUnmapMemory(_allocator, get_current_frame().indirectShadowBuffers[cascadesIndex]._allocation);
 
 	vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, get_material("culling")->pipeline);
 
-	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, get_material("culling")->pipelineLayout, 0, 1, &get_current_frame().cullShadowDescriptor, 0, nullptr);
+	vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, get_material("culling")->pipelineLayout, 0, 1, &get_current_frame().cullCascadeDescriptors[cascadesIndex], 0, nullptr);
 
 	glm::vec3 verticalNormal = { 0.0f, 1.0f, 0.0f };
 	glm::vec3 horizontalNormal = { 1.0f, 0.0f, 0.0f };
@@ -1648,6 +1628,7 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 	CullConstants constants;
 	constants.view = glm::lookAt(_lightPos, _lightFoc, glm::vec3(0.0f, 1.0f, 0.0f));
 	constants.frustum = { zLeftRight, xLeftRight, zTopBottom, yTopBottom };
+	constants.distance = get_current_frame().cascades[cascadesIndex].radius;
 	constants.zfar = 240.0f;
 	constants.znear = 140.0f;
 
@@ -1655,7 +1636,9 @@ void VulkanEngine::execute_shadow_culling(VkCommandBuffer cmd, RenderObject* fir
 
 	int groupcount = ((count) / 256) + 1;
 
-	//vkCmdDispatch(cmd, groupcount, 1, 1);
+	vkCmdDispatch(cmd, groupcount, 1, 1);
+
+	VK_CHECK(vkEndCommandBuffer(cmd));
 }
 
 void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int count)
@@ -1696,6 +1679,7 @@ void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int
 	CullConstants constants;
 	constants.view = glm::lookAt(_camera._camPos, _camera._foc, glm::vec3(0.0f, 1.0f, 0.0f));
 	constants.frustum = { zLeftRight, xLeftRight, zTopBottom, yTopBottom };
+	constants.distance = 0.0f;
 	constants.zfar = 100.0f;
 	constants.znear = 10.0f;
 
@@ -1705,17 +1689,21 @@ void VulkanEngine::execute_culling(VkCommandBuffer cmd, RenderObject* first, int
 
 	vkCmdDispatch(cmd, groupcount, 1, 1);
 
+	std::vector<VkBufferMemoryBarrier> barriers;
 	VkBufferMemoryBarrier barrier = vkinit::buffer_barrier(get_current_frame().indirectBuffer._buffer, _graphicsQueueFamily);
 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	barriers.push_back(barrier);
 
-	VkBufferMemoryBarrier barrier2 = vkinit::buffer_barrier(get_current_frame().indirectShadowBuffer._buffer, _graphicsQueueFamily);
-	barrier2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	barrier2.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
+		VkBufferMemoryBarrier barrier2 = vkinit::buffer_barrier(get_current_frame().indirectShadowBuffers[i]._buffer, _graphicsQueueFamily);
+		barrier2.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+		barrier2.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+		barriers.push_back(barrier2);
+	}
+	
 
-	VkBufferMemoryBarrier barriers[] = { barrier, barrier2 };
-
-	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, 2, barriers, 0, nullptr);
+	vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 0, nullptr, barriers.size(), barriers.data(), 0, nullptr);
 
 	VK_CHECK(vkEndCommandBuffer(cmd));
 }
@@ -1785,11 +1773,11 @@ void VulkanEngine::prepare_depthpass()
 	VmaAllocationCreateInfo img_allocinfo = {};
 	img_allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 	img_allocinfo.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	VkImageCreateInfo img_shadow_info = vkinit::image_create_info(_depthFormat, SHADOW_MAP_CASCADE_COUNT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT);
+	VkImageCreateInfo img_shadow_info = vkinit::image_create_info(_depthFormat, SHADOW_MAP_CASCADE_COUNT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, shadowExtent, VK_SAMPLE_COUNT_1_BIT,1);
 
 	vmaCreateImage(_allocator, &img_shadow_info, &img_allocinfo, &_depth._image, &_depth._allocation, nullptr);
 
-	VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+	VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT,1);
 	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 	viewInfo.subresourceRange.baseMipLevel = 0;
 	viewInfo.subresourceRange.levelCount = 1;
@@ -1802,7 +1790,7 @@ void VulkanEngine::prepare_depthpass()
 	{
 		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
 
-			VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT);
+			VkImageViewCreateInfo viewInfo = vkinit::imageview_create_info(_depthFormat, _depth._image, VK_IMAGE_ASPECT_DEPTH_BIT,1);
 			viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 			viewInfo.subresourceRange.baseMipLevel = 0;
 			viewInfo.subresourceRange.levelCount = 1;
@@ -1822,10 +1810,10 @@ void VulkanEngine::prepare_depthpass()
 			_mainDeletionQueue.push_function([=]() {
 				vkDestroyImageView(_device, _depthView, nullptr);
 				vmaDestroyImage(_allocator, _depth._image, _depth._allocation);
-				for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
-					vkDestroyImageView(_device, _frames[i].cascades[j].view, nullptr);
-					vkDestroyFramebuffer(_device, _frames[i].cascades[j].frameBuffer, nullptr);
-				}
+				
+				vkDestroyImageView(_device, _frames[i].cascades[j].view, nullptr);
+				vkDestroyFramebuffer(_device, _frames[i].cascades[j].frameBuffer, nullptr);
+				
 				});
 		}
 	}
@@ -1854,7 +1842,7 @@ void VulkanEngine::update_csm_descriptors( RenderObject* first, int count)
 	vmaUnmapMemory(_allocator, get_current_frame().objectBuffer._allocation);
 
 	_sceneParameters.lightColor = { 3.0,3.0,3.0 };
-	_sceneParameters.lightDir = glm::normalize(glm::vec3{ 3.0,3.0,3.0 });
+	_sceneParameters.lightDir = glm::normalize(glm::vec3{ -0.3,1.0,1.0 });
 	_sceneParameters.zNear = 0.1f;
 	_sceneParameters.zFar = 200.0f;
 
@@ -1952,14 +1940,33 @@ void VulkanEngine::update_csm_descriptors( RenderObject* first, int count)
 			float distance = glm::length(frustumCorners[j] - frustumCenter);
 			radius = glm::max(radius, distance);
 		}
-		radius = std::ceil(radius * 16.0f) / 16.0f;
+		//radius = std::ceil(radius*16.0f)/16.0f;
+
+		//float unitsPerTexel = (2.0f * radius) / (float)_shadowExtent.height;
+		//radius = std::ceil(radius / unitsPerTexel) * unitsPerTexel;
 
 		glm::vec3 maxExtents = glm::vec3(radius);
 		glm::vec3 minExtents = -maxExtents;
 
-		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter + _sceneParameters.lightDir * (maxExtents + 20.0f), frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
-		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x,  maxExtents.y, minExtents.y, 0.0f, maxExtents.z*2.0f+40.0f);
+		glm::mat4 lightViewMatrix = glm::lookAt(frustumCenter + _sceneParameters.lightDir * (maxExtents + 40.0f), frustumCenter, glm::vec3(0.0f, 1.0f, 0.0f));
+		glm::mat4 lightOrthoMatrix = glm::ortho(minExtents.x, maxExtents.x,  maxExtents.y, minExtents.y, 0.0f, maxExtents.z*2.0f+80.0f);
 
+		glm::mat4 shadowMatrix = lightOrthoMatrix * lightViewMatrix;
+		glm::vec4 shadowOrigin = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		shadowOrigin = shadowMatrix * shadowOrigin;
+		shadowOrigin = shadowOrigin * (float)_shadowExtent.height / 2.0f;
+
+		glm::vec4 roundedOrigin = glm::round(shadowOrigin);
+		glm::vec4 roundOffset = roundedOrigin - shadowOrigin;
+		roundOffset = roundOffset * 2.0f / (float)_shadowExtent.height;
+		roundOffset.z = 0.0f;
+		roundOffset.w = 0.0f;
+
+		glm::mat4 shadowProj = lightOrthoMatrix;
+		shadowProj[3] += roundOffset;
+		lightOrthoMatrix = shadowProj;
+
+		get_current_frame().cascades[i].radius = radius;
 		get_current_frame().cascades[i].splitDepth = (_camera.zNear + splitDist * clipRange) * -1.0f;
 		get_current_frame().cascades[i].viewProjMatrix = lightOrthoMatrix * lightViewMatrix;
 
@@ -1981,8 +1988,11 @@ void VulkanEngine::update_csm_descriptors( RenderObject* first, int count)
 	void* cascadesSetData;
 	CascadesSet cascadesSet;
 	for (uint32_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
-		cascadesSet.cascadeSplits[i] = get_current_frame().cascades[i].splitDepth;
+		uint32_t rowIndex = i / 4;
+		uint32_t colIndex = i % 4;
+		cascadesSet.cascadeSplits[rowIndex][colIndex] = get_current_frame().cascades[i].splitDepth;
 		cascadesSet.cascadeViewProjMat[i] = get_current_frame().cascades[i].viewProjMatrix;
+		cascadesSet.cascadeSizes[rowIndex][colIndex] = std::pow(2.0f * get_current_frame().cascades[i].radius, 2.0f);
 	}
 	
 	vmaMapMemory(_allocator, get_current_frame().cascadesSetBuffer._allocation, &cascadesSetData);
@@ -2016,10 +2026,11 @@ void VulkanEngine::update_csm(VkCommandBuffer cmd, RenderObject* first, int coun
 		VkDeviceSize indirect_offset = draw.first * sizeof(VkDrawIndirectCommand);
 		uint32_t draw_stride = sizeof(VkDrawIndirectCommand);
 
-		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffer._buffer, indirect_offset, draw.count, draw_stride);
+		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffers[cascadesIndex]._buffer, indirect_offset, draw.count, draw_stride);
 	}
 }
 
+/*
 void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int count)
 {
 
@@ -2109,10 +2120,10 @@ void VulkanEngine::draw_shadow(VkCommandBuffer cmd, RenderObject* first, int cou
 		for (size_t i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) {
 
 		}
-		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffer._buffer, indirect_offset, draw.count, draw_stride);
+		vkCmdDrawIndirect(cmd, get_current_frame().indirectShadowBuffers[cascadesIndex]._buffer, indirect_offset, draw.count, draw_stride);
 	}
 }
-
+*/
 void VulkanEngine::draw_gbuffer(VkCommandBuffer cmd, RenderObject* first, int count)
 {
 	int frameIndex = _frameNumber % FRAME_OVERLAP;
@@ -2233,8 +2244,8 @@ void VulkanEngine::init_scene()
 	"Cube.016_Cube.031",
 	"Cube.020_Cube.035",
 	"Cube.023_Cube.038",
-	"Cylinder_Cylinder.001",
-	"Cylinder.001_Cylinder.003",
+	//"Cylinder_Cylinder.001",
+	//"Cylinder.001_Cylinder.003",
 	"Building_1_Plane.006",
 	"Building_1.001_Plane.005",
 	"Building_2_Cube.001",
@@ -2245,15 +2256,15 @@ void VulkanEngine::init_scene()
 	"Building_5_Cube.027",
 	"Building_6_Cube.008",
 	"Plane.005_Plane.017",
-	"Cube.001",
-	"Cube.001_Cube.002",
-	"Cube.002_Cube.003",
-	"Cube.007_Cube.016",
-	"Cube.008_Cube.018",
+	//"Cube.001",
+	//"Cube.001_Cube.002",
+	//"Cube.002_Cube.003",
+	//"Cube.007_Cube.016",
+	//"Cube.008_Cube.018",
 	"Cube.003_Cube.004",
 	"Cube.005",
 	"Cube.004_Cube.051",
-	"Cube.006_Cube.012",
+	//"Cube.006_Cube.012",
 	"Cube.009_Cube.021",
 	"Cube.011_Cube.024",
 	"Cube.012_Cube.025",
@@ -2275,8 +2286,8 @@ void VulkanEngine::init_scene()
 		{"Cube.016_Cube.031", "Bark"},
 		{"Cube.020_Cube.035", "Bark"},
 		{"Cube.023_Cube.038", "Bark"},
-		{"Cylinder_Cylinder.001", "Bark"},
-		{"Cylinder.001_Cylinder.003", "Bark"},
+		{"Cylinder_Cylinder.001", "Stop light"},
+		{"Cylinder.001_Cylinder.003", "Stop light"},
 		{"Building_1_Plane.006", "Building 1"},
 		{"Building_1.001_Plane.005", "Building 1"},
 		{"Building_2_Cube.001", "Building 2"},
@@ -2292,8 +2303,8 @@ void VulkanEngine::init_scene()
 		{"Cube.002_Cube.003", "Building 8"},
 		{"Cube.007_Cube.016", "Building 8"},
 		{"Cube.008_Cube.018", "Building 8"},
-		{"Cube.003_Cube.004", "Building 1"},
-		{"Cube.005", "Building 1"},
+		{"Cube.003_Cube.004", "Building 9"},
+		{"Cube.005", "Building 9"},
 		{"Cube.004_Cube.051", "Building 10"},
 		{"Cube.006_Cube.012", "Building 11"},
 		{"Cube.009_Cube.021", "Leaf 2"},
@@ -2352,10 +2363,23 @@ void VulkanEngine::init_scene()
 		obj.transformMatrix = glm::mat4(1.0f);
 		_renderables.push_back(obj);
 	}
+	RenderObject obj1;
+	obj1.mesh = get_mesh("Building_5_Cube.027");
+	obj1.material = get_material(texMap1.at("Building_5_Cube.027"));
+	obj1.transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(15.0f,0.0f, 0.0f));
+	_renderables.push_back(obj1);
 
+	RenderObject obj2;
+	obj2.mesh = get_mesh("Plane.005_Plane.017");
+	obj2.material = get_material(texMap1.at("Plane.005_Plane.017"));
+	obj2.transformMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+	_renderables.push_back(obj2);
+	
 
 	VkSamplerCreateInfo samplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR);
 	VkSamplerCreateInfo shadowSamplerInfo = vkinit::sampler_create_info(VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+	shadowSamplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+
 	VkSampler imgSampler;
 	vkCreateSampler(_device, &samplerInfo, nullptr, &imgSampler);
 
@@ -2367,26 +2391,13 @@ void VulkanEngine::init_scene()
 		});
 	
 
-	for (auto name : TEXTURE_NAMES) {
-		Material* texMat = get_material(name);
-		_descriptorAllocator->allocate(&texMat->textureSet, _singleTextureSetLayout);
-
-		VkDescriptorImageInfo imageBufferInfo;
-		imageBufferInfo.sampler = imgSampler;
-		imageBufferInfo.imageView = _loadedTextures[name].imageView;
-		imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
-			.bind_image(0, 1, &imageBufferInfo, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-			.build(texMat->textureSet);
-	}
 
 	for (auto name : TEXTURE_NAMES1) {
 		Material* texMat = get_material(name);
 		_descriptorAllocator->allocate(&texMat->textureSet, _singleTextureSetLayout);
 
 		VkDescriptorImageInfo imageBufferInfo;
-		imageBufferInfo.sampler = imgSampler;
+		imageBufferInfo.sampler = _loadedTextures[name].image._sampler;
 		imageBufferInfo.imageView = _loadedTextures[name].imageView;
 		imageBufferInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -2610,13 +2621,17 @@ void VulkanEngine::init_descriptors()
 
 		const int MAX_COMMANDS = 10000;
 		_frames[i].indirectBuffer = create_buffer(sizeof(VkDrawIndirectCommand) * MAX_COMMANDS, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-		_frames[i].indirectShadowBuffer = create_buffer(sizeof(VkDrawIndirectCommand) * MAX_COMMANDS, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		//_frames[i].indirectShadowBuffer = create_buffer(sizeof(VkDrawIndirectCommand) * MAX_COMMANDS, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+			_frames[i].indirectShadowBuffers[j] = create_buffer(sizeof(VkDrawIndirectCommand) * MAX_COMMANDS, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+			_descriptorAllocator->allocate(&_frames[i].cullCascadeDescriptors[j], _cullSetLayout);
+		}
 
 		_descriptorAllocator->allocate(&_frames[i].lightDescriptor, _lightSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].globalDescriptor, _globalSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].objectDescriptor, _objectSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].cullDescriptor, _cullSetLayout);
-		_descriptorAllocator->allocate(&_frames[i].cullShadowDescriptor, _cullSetLayout);
+		//_descriptorAllocator->allocate(&_frames[i].cullShadowDescriptor, _cullSetLayout);
 		_descriptorAllocator->allocate(&_frames[i].cascadesSetDescriptor, _cascadesSetLayout);
 
 		VkDescriptorBufferInfo cameraInfo;
@@ -2644,10 +2659,13 @@ void VulkanEngine::init_descriptors()
 		indirectBufferInfo.offset = 0;
 		indirectBufferInfo.range = sizeof(VkDrawIndirectCommand) * MAX_OBJECTS;
 
-		VkDescriptorBufferInfo indirectShadowBufferInfo;
-		indirectShadowBufferInfo.buffer = _frames[i].indirectShadowBuffer._buffer;
-		indirectShadowBufferInfo.offset = 0;
-		indirectShadowBufferInfo.range = sizeof(VkDrawIndirectCommand) * MAX_OBJECTS;
+		std::array<VkDescriptorBufferInfo,SHADOW_MAP_CASCADE_COUNT> indirectShadowBufferInfos;
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+			indirectShadowBufferInfos[j].buffer = _frames[i].indirectShadowBuffers[j]._buffer;
+			indirectShadowBufferInfos[j].offset = 0;
+			indirectShadowBufferInfos[j].range = sizeof(VkDrawIndirectCommand) * MAX_OBJECTS;
+		}
+		
 
 		VkDescriptorBufferInfo lightBufferInfo;
 		lightBufferInfo.buffer = _frames[i].lightBuffer._buffer;
@@ -2697,11 +2715,14 @@ void VulkanEngine::init_descriptors()
 			.bind_buffer(2, &indirectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
 			.build(_frames[i].cullDescriptor);
 
-		vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
-			.bind_buffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-			.bind_buffer(1, &instanceBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-			.bind_buffer(2, &indirectShadowBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
-			.build(_frames[i].cullShadowDescriptor);
+		for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+			vkutil::DescriptorBuilder::begin(_descriptorLayoutCache, _descriptorAllocator)
+				.bind_buffer(0, &objectBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bind_buffer(1, &instanceBufferInfo, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.bind_buffer(2, &indirectShadowBufferInfos[j], VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT)
+				.build(_frames[i].cullCascadeDescriptors[j]);
+		}
+		
 	}
 
 	_mainDeletionQueue.push_function([&]() {
@@ -2715,7 +2736,10 @@ void VulkanEngine::init_descriptors()
 			vmaDestroyBuffer(_allocator, _frames[i].lightBuffer._buffer, _frames[i].lightBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].objectBuffer._buffer, _frames[i].objectBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].instanceBuffer._buffer, _frames[i].instanceBuffer._allocation);
-			vmaDestroyBuffer(_allocator, _frames[i].indirectShadowBuffer._buffer, _frames[i].indirectShadowBuffer._allocation);
+			for (uint32_t j = 0; j < SHADOW_MAP_CASCADE_COUNT; j++) {
+				vmaDestroyBuffer(_allocator, _frames[i].indirectShadowBuffers[j]._buffer, _frames[i].indirectShadowBuffers[j]._allocation);
+			}
+			//vmaDestroyBuffer(_allocator, _frames[i].indirectShadowBuffer._buffer, _frames[i].indirectShadowBuffer._allocation);
 			vmaDestroyBuffer(_allocator, _frames[i].indirectBuffer._buffer, _frames[i].indirectBuffer._allocation);
 		}
 	});

@@ -7,8 +7,9 @@ layout(set = 0, binding = 0) uniform  CameraBuffer{
 } cameraData;
 
 layout (set = 1, binding = 0) uniform csmBuffer{
-	vec4 cascadeSplits;
+	mat4 cascadeSplits;
 	mat4 cascadeViewProjMat[SHADOW_MAP_CASCADE_COUNT];
+    mat4 frustumSizes;
 } csmData;
 
 layout(set = 1, binding = 1) uniform  SceneData{   
@@ -46,7 +47,7 @@ void main() {
     vec4 normal = modelMatrix * vec4(inNormal, 1.0);
     normal = normal / normal.w;
     gl_Position = cameraData.viewproj * position;
-    //gl_Position = csmData.cascadeViewProjMat[0] * position;
+    //gl_Position = csmData.cascadeViewProjMat[6] * position;
 
     fragPosition = position;
     fragColor = inColor;

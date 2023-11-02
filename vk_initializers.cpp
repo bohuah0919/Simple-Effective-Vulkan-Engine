@@ -203,7 +203,7 @@ VkPipelineLayoutCreateInfo vkinit::pipeline_layout_create_info() {
 }
 
 
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, int imgCount, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples)
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, int imgCount, VkImageUsageFlags usageFlags, VkExtent3D extent, VkSampleCountFlagBits samples, uint32_t mipLevels)
 {
 	VkImageCreateInfo info = { };
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -214,7 +214,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, int imgCount, VkIma
 	info.format = format;
 	info.extent = extent;
 
-	info.mipLevels = 1;
+	info.mipLevels = mipLevels;
 	info.arrayLayers = imgCount;
 	info.samples = samples;
 	info.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -223,7 +223,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, int imgCount, VkIma
 	return info;
 }
 
-VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags)
+VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels)
 {
 	VkImageViewCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -233,7 +233,7 @@ VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage ima
 	info.image = image;
 	info.format = format;
 	info.subresourceRange.baseMipLevel = 0;
-	info.subresourceRange.levelCount = 1;
+	info.subresourceRange.levelCount = mipLevels;
 	info.subresourceRange.baseArrayLayer = 0;
 	info.subresourceRange.layerCount = 1;
 	info.subresourceRange.aspectMask = aspectFlags;

@@ -57,11 +57,11 @@ bool isVisible(uint objectIndex)
 	
 	bool visible = true;
 
-	visible = visible && abs(center.z) * cull.frustum.x - abs(center.x) * cull.frustum.y > -(radius+cull.distance);
-	visible = visible && abs(center.z) * cull.frustum.z - abs(center.y) * cull.frustum.w > -(radius+cull.distance);
+	visible = visible && -center.z * cull.frustum.x - abs(center.x) * cull.frustum.y > -(radius+cull.distance);
+	visible = visible && -center.z * cull.frustum.z - abs(center.y) * cull.frustum.w > -(radius+cull.distance);
 
 	
-	//visible = visible && -center.z + radius > cull.znear ;
+	visible = visible && -center.z + radius > cull.znear ;
 	//visible = visible  && center.z - radius < cull.zfar;
 
 	return visible;
